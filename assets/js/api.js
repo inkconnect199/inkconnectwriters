@@ -10,7 +10,7 @@
 const API_CONFIG = {
   // Paste your deployed Google Apps Script Web App URL here, e.g.
   // "https://script.google.com/macros/s/AKfycb.../exec"
-  GAS_URL: "",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbxNtf4bLVG4JForeBMe6urF0NEQkuST4bIyzjF3pnYgnWQLJfLbc17mVY4uuiQ0Hm20jA/exec",
 };
 
 const DB_KEY = "inkconnect_db_v1";
