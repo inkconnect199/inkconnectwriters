@@ -2,14 +2,12 @@
  * ============================================================
  * INKCONNECT — GOOGLE APPS SCRIPT BACKEND
  * ============================================================
- * Deploy this as a Web App (Deploy > New deployment > Web app,
- * execute as "Me", access "Anyone"). Paste the resulting /exec
- * URL into API_CONFIG.GAS_URL in assets/js/api.js to switch the
- * frontend from its local demo database to this live backend.
+ * The Web App uses bearer sessions for protected actions. Deploy only
+ * after reviewing the deployment and security notes in SETUP.md.
  *
  * Sheet tabs required (create them once, headers in row 1):
  *   Users, Jobs, Applications, Messages, Payments, Wallet,
- *   Notifications, Reviews, SupportTickets, Settings
+ *   Notifications, Reviews, SupportTickets, Settings, AccessRequests
  * See SETUP.md for setup instructions and troubleshooting.
  *
  * SECURITY NOTE: passwords arrive already SHA-256 hashed by the
@@ -79,33 +77,202 @@ function doPost(e) {
     if (typeof Actions[action] !== "function") {
       return jsonResponse({ ok: false, error: "Unknown action: " + action });
     }
-    const result = Actions[action](payload || {});
+    const requestPayload = Object.assign({}, payload || {});
+    delete requestPayload._actorId;
+    delete requestPayload._actorRole;
+    if (isPublicAction(action) && body.token) {
+      const optionalSession = getSessionUser(body.token);
+      if (optionalSession && !optionalSession.suspended) requestPayload._actorId = optionalSession.id;
+    }
+    if (!isPublicAction(action)) {
+      const session = getSessionUser(body.token);
+      if (!session) return jsonResponse({ ok: false, error: "Your session has expired. Please sign in again." });
+      if (session.suspended) return jsonResponse({ ok: false, error: "This account has been suspended. Contact support." });
+      if (isAdminAction(action) && session.role !== "admin") {
+        return jsonResponse({ ok: false, error: "Administrator access is required." });
+      }
+      requestPayload._actorId = session.id;
+      requestPayload._actorRole = session.role;
+      scopeRequestToActor(action, requestPayload, session);
+      const accessError = validateActionAccess(action, requestPayload, session);
+      if (accessError) return jsonResponse({ ok: false, error: accessError });
+    }
+
+    if (action === "logout") {
+      CacheService.getScriptCache().remove("inkconnect_session_" + body.token);
+      return jsonResponse({ ok: true });
+    }
+    const result = Actions[action](requestPayload);
     return jsonResponse(result);
   } catch (err) {
     return jsonResponse({ ok: false, error: err.message });
   }
 }
 
-/** Handles the STK Push result Safaricom POSTs asynchronously after the
-    customer enters (or cancels) their M-Pesa PIN. Because this reference
-    implementation credits the wallet optimistically when the push is sent
-    (see Actions.deposit), a failed/cancelled push here reverses that
-    credit. Matches the payment row by its CheckoutRequestID reference. */
-function handleMpesaCallback(body) {
-  try {
-    const cb = body.Body.stkCallback;
-    const reference = cb.CheckoutRequestID;
-    const payments = readRows(SHEET_NAMES.PAYMENTS);
-    const payment = payments.find((p) => p.reference === reference);
-    if (payment && cb.ResultCode !== 0) {
-      // Push failed or was cancelled — reverse the optimistic wallet credit.
-      const wallet = readRows(SHEET_NAMES.WALLET).find((w) => w.userId === payment.userId);
-      if (wallet) updateRowById(SHEET_NAMES.WALLET, "userId", payment.userId, { balance: Number(wallet.balance) - Number(payment.amount) });
-      notify(payment.userId, "payment", "Your M-Pesa deposit of $" + payment.amount + " failed or was cancelled.");
+const PUBLIC_ACTIONS = [
+  "healthCheck", "register", "login", "getWriters", "getJobs", "getSiteSettings",
+  "createTicket", "requestPasswordReset", "resetPassword",
+];
+
+const ADMIN_ACTIONS = [
+  "adminApproveJob", "adminRejectJob", "adminGetAllThreads", "broadcastAnnouncement",
+  "notification", "updateTicket", "adminGetUsers", "adminGetUserDetail",
+  "adminSetUserStatus", "adminCreateAdmin", "adminPromoteToAdmin", "adminStats",
+  "getAccessRequests", "approveAccessRequest", "rejectAccessRequest",
+  "updateSiteSettings", "adminGetAllWallets",
+];
+
+function isPublicAction(action) { return PUBLIC_ACTIONS.indexOf(action) !== -1; }
+function isAdminAction(action) { return ADMIN_ACTIONS.indexOf(action) !== -1; }
+
+function scopeRequestToActor(action, payload, session) {
+  const selfIdFields = {
+    changePassword: "userId", getWallet: "userId", getTransactions: "userId",
+    getNotifications: "userId", markNotificationsRead: "userId", getThreads: "userId",
+    getReferrals: "userId", getReviews: "userId", submitAccessPayment: "userId",
+    initializePaystackAccessPayment: "userId", verifyPaystackAccessPayment: "userId",
+  };
+  if (selfIdFields[action]) payload[selfIdFields[action]] = session.id;
+
+  if (action === "getUser" || action === "updateProfile") payload.id = session.id;
+  if (action === "getTickets" && session.role !== "admin") payload.userId = session.id;
+  if (action === "createTicket") payload.userId = session.id;
+  if (action === "markRead") payload.userId = session.id;
+  if (action === "sendMessage") payload.fromId = session.id;
+
+  if (action === "getJobs" && session.role === "client") payload.clientId = session.id;
+  if (action === "getApplications") {
+    if (session.role === "writer") {
+      payload.writerId = session.id;
+      delete payload.clientId;
+    } else if (session.role === "client") {
+      payload.clientId = session.id;
+      delete payload.writerId;
     }
-  } catch (err) {
-    // Swallow errors here — Safaricom only cares about a 200 response.
   }
+  if (action === "postJob") {
+    payload.clientId = session.id;
+    payload.clientName = session.fullName;
+  }
+  if (action === "applyJob") {
+    payload.writerId = session.id;
+    payload.writerName = session.fullName;
+  }
+  if (action === "deposit" || action === "withdraw") payload.userId = session.id;
+  if (action === "updateProfile") {
+    const allowedFields = ["fullName", "phone", "country", "bio", "skills", "rate", "experience", "languages", "education", "certificates", "availability", "portfolio", "profilePic"];
+    payload.updates = Object.keys(payload.updates || {}).reduce((safe, key) => {
+      if (allowedFields.indexOf(key) !== -1) safe[key] = payload.updates[key];
+      return safe;
+    }, {});
+  }
+}
+
+function validateActionAccess(action, payload, session) {
+  const roleRequirements = {
+    postJob: ["client"], acceptWriter: ["client"], rejectWriter: ["client"], payWriter: ["client"],
+    applyJob: ["writer"], uploadWork: ["writer"],
+    submitAccessPayment: ["client", "writer"], initializePaystackAccessPayment: ["client", "writer"],
+    verifyPaystackAccessPayment: ["client", "writer"], deposit: ["client", "writer"], withdraw: ["client", "writer"],
+  };
+  if (roleRequirements[action] && roleRequirements[action].indexOf(session.role) === -1) {
+    return "This action is not available for your account type.";
+  }
+  if (session.role !== "admin" && roleNeedsAccessFee(session.role) && session.accessStatus !== "active") {
+    const pendingAllowed = [
+      "changePassword", "getUser", "submitAccessPayment", "initializePaystackAccessPayment",
+      "verifyPaystackAccessPayment", "logout",
+    ];
+    if (pendingAllowed.indexOf(action) === -1) {
+      return "Complete the account access review before using this feature.";
+    }
+  }
+  if (session.role === "admin") return "";
+
+  const jobs = readRows(SHEET_NAMES.JOBS);
+  if (action === "editJob" || action === "deleteJob" || action === "acceptWriter" ||
+      action === "rejectWriter" || action === "payWriter") {
+    let jobId = payload.id;
+    if (action === "acceptWriter" || action === "rejectWriter") {
+      const application = readRows(SHEET_NAMES.APPLICATIONS).find((row) => row.id === payload.applicationId);
+      if (!application) return "Application not found.";
+      jobId = application.jobId;
+    }
+    const job = jobs.find((row) => row.id === jobId || (action === "payWriter" && row.id === payload.jobId));
+    if (!job || job.clientId !== session.id) return "You can only manage your own jobs.";
+    if (action === "editJob") {
+      const allowedFields = ["title", "category", "budget", "description", "deadline"];
+      payload.updates = Object.keys(payload.updates || {}).reduce((safe, key) => {
+        if (allowedFields.indexOf(key) !== -1) safe[key] = payload.updates[key];
+        return safe;
+      }, {});
+    }
+  }
+  if (action === "applyJob") {
+    const job = jobs.find((row) => row.id === payload.jobId);
+    if (!job || job.status !== "open") return "This job is not available for applications.";
+  }
+  if (action === "uploadWork") {
+    const job = jobs.find((row) => row.id === payload.jobId);
+    const accepted = readRows(SHEET_NAMES.APPLICATIONS).some((row) =>
+      row.jobId === payload.jobId && row.writerId === session.id && row.status === "accepted");
+    if (!job || !accepted) return "You can only submit work for a job you were accepted for.";
+  }
+  if (action === "getMessages") {
+    const messages = readRows(SHEET_NAMES.MESSAGES).filter((row) => row.threadId === payload.threadId);
+    if (messages.some((row) => row.fromId === session.id || row.toId === session.id)) return "";
+    const participants = String(payload.threadId || "").split("__");
+    if (participants.length === 2 && participants.indexOf(session.id) !== -1) return "";
+    return "You cannot access this message thread.";
+  }
+  if (action === "sendMessage") {
+    const participants = [session.id, String(payload.toId || "")].sort();
+    if (!payload.toId || payload.toId === session.id || payload.threadId !== participants.join("__")) {
+      return "Invalid message recipient or conversation.";
+    }
+  }
+  if (action === "review") {
+    const job = jobs.find((row) => row.id === payload.jobId);
+    if (!job || job.status !== "completed") return "Reviews are only available for completed jobs.";
+    const accepted = readRows(SHEET_NAMES.APPLICATIONS).find((row) => row.jobId === job.id && row.status === "accepted");
+    const otherId = session.id === job.clientId ? (accepted && accepted.writerId) :
+      (accepted && accepted.writerId === session.id ? job.clientId : "");
+    if (!otherId) return "You are not a participant in this completed job.";
+    payload.fromId = session.id;
+    payload.toId = otherId;
+    const alreadyReviewed = readRows(SHEET_NAMES.REVIEWS).some((row) =>
+      row.jobId === job.id && row.fromId === session.id);
+    if (alreadyReviewed) return "You have already reviewed this job.";
+  }
+  if (action === "createTicket" && !payload._actorId) payload.userId = "";
+  return "";
+}
+
+function createSessionToken(user) {
+  const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  CacheService.getScriptCache().put("inkconnect_session_" + token, JSON.stringify({
+    id: user.id,
+    version: Number(user.sessionVersion || 0),
+  }), 21600);
+  return token;
+}
+
+function getSessionUser(token) {
+  if (!token || typeof token !== "string") return null;
+  const stored = CacheService.getScriptCache().get("inkconnect_session_" + token);
+  if (!stored) return null;
+  let session;
+  try { session = JSON.parse(stored); } catch (err) { return null; }
+  const user = readRows(SHEET_NAMES.USERS).find((row) => row.id === session.id);
+  if (!user || Number(user.sessionVersion || 0) !== Number(session.version || 0)) return null;
+  return user;
+}
+
+/** Accepts provider callback requests without mutating wallet data. */
+function handleMpesaCallback(body) {
+  // Deposits stay disabled until callbacks can be independently verified
+  // against the payment provider; never change wallet balances from an
+  // unauthenticated callback payload.
   return jsonResponse({ ResultCode: 0, ResultDesc: "Accepted" });
 }
 
@@ -132,7 +299,15 @@ function onOpen() {
     .addItem("2. Check setup", "runInkConnectDiagnostics")
     .addSeparator()
     .addItem("3. Create admin account", "runInkConnectSeedAdmin")
+    .addItem("4. Authorize password reset email", "authorizePasswordResetEmail")
     .addToUi();
+}
+
+function authorizePasswordResetEmail() {
+  const remaining = MailApp.getRemainingDailyQuota();
+  const message = "Password-reset email is authorized. Remaining recipient quota today: " + remaining;
+  Logger.log(message);
+  return message;
 }
 
 function getDatabaseSpreadsheet() {
@@ -247,12 +422,12 @@ function uid(prefix) {
 }
 
 function nowMs() { return new Date().getTime(); }
+function isPasswordHash(value) { return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value); }
 
 /* ---------------- Payment gateway config ----------------
    Set these in Apps Script: Project Settings > Script Properties.
-   Leave any of them blank to fall back to simulated instant
-   success for that method, so the app is always fully testable
-   even before you have live credentials. See SETUP.md. */
+   Wallet deposits and withdrawals remain disabled until provider
+   verification and payout accounting are implemented end-to-end. */
 function getPaymentConfig() {
   const p = PropertiesService.getScriptProperties();
   return {
@@ -385,16 +560,13 @@ function paypalPayout(cfg, email, amount, note) {
   return { success: false, error: (data.message || "PayPal payout failed.") };
 }
 
-/** Note: PayPal *deposits* (client adds funds) normally use the PayPal JS SDK
-    Orders API with a browser-side approval redirect, which needs a hosted
-    checkout page rather than a single server call. That flow is documented
-    in SETUP.md as an extension point; deposits fall back to simulated
-    success here so the rest of the app is always testable end-to-end. */
+/** PayPal wallet deposits require a separate verified checkout flow. */
 
 
 function sanitizeUser(u) {
   const copy = Object.assign({}, u);
   delete copy.passwordHash;
+  delete copy.sessionVersion;
   // Same Sheets-numeric-coercion guard as asText() below, applied to every
   // field the frontend always treats as text (phone numbers typed without
   // a leading 0/+ are the most common case that gets silently turned into
@@ -443,7 +615,28 @@ function awardReferralBonus(referredUser) {
 /* ---------------- Actions ---------------- */
 const Actions = {
 
+  healthCheck() {
+    const ss = getDatabaseSpreadsheet();
+    const requiredSheets = Object.keys(SHEET_NAMES).map((key) => SHEET_NAMES[key]);
+    const missingSheets = requiredSheets.filter((name) => !ss.getSheetByName(name));
+    if (missingSheets.length) {
+      return { ok: false, error: "Google Sheets backend is reachable, but these tabs are missing: " + missingSheets.join(", ") + ". Run InkConnect setup in the spreadsheet." };
+    }
+    const usersSheet = ss.getSheetByName(SHEET_NAMES.USERS);
+    const userHeaders = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+    if (userHeaders.indexOf("sessionVersion") === -1) {
+      return { ok: false, error: "The Users tab is missing the sessionVersion column. Run InkConnect setup in the spreadsheet." };
+    }
+    return { ok: true, message: "Google Sheets backend is connected and all required tabs exist." };
+  },
+
   register(p) {
+    if (p.role !== "client" && p.role !== "writer") {
+      return { ok: false, error: "Choose a client or writer account." };
+    }
+    if (!p.email || !isPasswordHash(p.passwordHash) || !p.fullName || !p.username) {
+      return { ok: false, error: "Complete all required registration fields." };
+    }
     const users = readRows(SHEET_NAMES.USERS);
     if (users.find((u) => String(u.email).toLowerCase() === String(p.email).toLowerCase())) {
       return { ok: false, error: "An account with this email already exists." };
@@ -455,16 +648,16 @@ const Actions = {
       id: uid("usr"), fullName: p.fullName, username: p.username, email: p.email, phone: p.phone,
       country: p.country, role: p.role, passwordHash: p.passwordHash, profilePic: p.profilePic || "",
       bio: "", skills: "", rate: 0, rating: 0, completedJobs: 0, createdAt: nowMs(), verified: true, suspended: false,
-      accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active", accessRejectionReason: "",
+      accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active", accessRejectionReason: "", sessionVersion: 0,
       referralCode: generateReferralCode(users, p.username || p.fullName), referredBy: referrer ? referrer.id : "",
     };
     appendRow(SHEET_NAMES.USERS, user);
-    appendRow(SHEET_NAMES.WALLET, { userId: user.id, balance: p.role === "client" ? 100 : 0, escrow: 0 });
+    appendRow(SHEET_NAMES.WALLET, { userId: user.id, balance: 0, escrow: 0 });
 
     // No approval gate for this role — active immediately, so award now.
     if (user.accessStatus === "active" && user.referredBy) awardReferralBonus(user);
 
-    return { ok: true, user: sanitizeUser(user) };
+    return { ok: true, user: sanitizeUser(user), token: createSessionToken(user) };
   },
 
   login(p) {
@@ -473,12 +666,20 @@ const Actions = {
     if (!user) return { ok: false, error: "No account found with that email." };
     if (user.passwordHash !== p.passwordHash) return { ok: false, error: "Incorrect password." };
     if (user.suspended) return { ok: false, error: "This account has been suspended. Contact support." };
-    return { ok: true, user: sanitizeUser(user), token: uid("tok") };
+    return { ok: true, user: sanitizeUser(user), token: createSessionToken(user) };
   },
 
   getWriters() {
     const users = readRows(SHEET_NAMES.USERS).filter((u) => u.role === "writer");
-    return { ok: true, writers: users.map(sanitizeUser).map(deserializeSkills) };
+    return {
+      ok: true,
+      writers: users.map((user) => {
+        const writer = deserializeSkills(sanitizeUser(user));
+        delete writer.email;
+        delete writer.phone;
+        return writer;
+      }),
+    };
   },
 
   getUser(p) {
@@ -494,14 +695,53 @@ const Actions = {
     return { ok: true, exists: !!user };
   },
 
-  /** Forgot password: resets by email once it's been verified to exist.
-      For production, extend this with MailApp.sendEmail() and a real
-      time-limited token instead of resetting immediately. */
+  requestPasswordReset(p) {
+    const email = String(p.email || "").trim().toLowerCase();
+    const user = readRows(SHEET_NAMES.USERS).find((row) => String(row.email).toLowerCase() === email);
+    if (!user) return { ok: true };
+
+    const cache = CacheService.getScriptCache();
+    const rateLimitKey = "inkconnect_reset_rate_" + sha256Hex(email);
+    if (cache.get(rateLimitKey)) return { ok: true };
+    const token = Utilities.getUuid() + Utilities.getUuid();
+    const resetUserKey = "inkconnect_reset_user_" + user.id;
+    const previousToken = cache.get(resetUserKey);
+    if (previousToken) cache.remove("inkconnect_reset_" + previousToken);
+    cache.put("inkconnect_reset_" + token, user.id, 900);
+    cache.put(resetUserKey, token, 900);
+    cache.put(rateLimitKey, "1", 60);
+    try {
+      MailApp.sendEmail({
+        to: user.email,
+        subject: "Reset your InkConnect password",
+        body: "Use this one-time password reset code within 15 minutes:\n\n" + token +
+          "\n\nIf you did not request this, you can ignore this email.",
+      });
+    } catch (error) {
+      cache.remove("inkconnect_reset_" + token);
+      cache.remove(resetUserKey);
+      cache.remove(rateLimitKey);
+      throw new Error("Could not send the password reset email. Authorize MailApp in Apps Script and try again.");
+    }
+    return { ok: true };
+  },
+
   resetPassword(p) {
-    const user = readRows(SHEET_NAMES.USERS).find((u) => String(u.email).toLowerCase() === String(p.email || "").toLowerCase());
-    if (!user) return { ok: false, error: "No account found with that email." };
-    updateRowById(SHEET_NAMES.USERS, "id", user.id, { passwordHash: p.newPasswordHash });
-    notify(user.id, "payment", "Your password was reset.");
+    const tokenKey = "inkconnect_reset_" + String(p.resetToken || "");
+    const cache = CacheService.getScriptCache();
+    const userId = cache.get(tokenKey);
+    if (!userId || cache.get("inkconnect_reset_user_" + userId) !== String(p.resetToken || "")) {
+      return { ok: false, error: "The reset code is invalid or expired. Request a new one." };
+    }
+    const user = readRows(SHEET_NAMES.USERS).find((u) =>
+      u.id === userId && String(u.email).toLowerCase() === String(p.email || "").trim().toLowerCase());
+    if (!user || !isPasswordHash(p.newPasswordHash)) return { ok: false, error: "The reset code is invalid or expired. Request a new one." };
+    updateRowById(SHEET_NAMES.USERS, "id", user.id, {
+      passwordHash: p.newPasswordHash,
+      sessionVersion: Number(user.sessionVersion || 0) + 1,
+    });
+    cache.remove(tokenKey);
+    cache.remove("inkconnect_reset_user_" + user.id);
     return { ok: true };
   },
 
@@ -510,9 +750,16 @@ const Actions = {
     const user = readRows(SHEET_NAMES.USERS).find((u) => u.id === p.userId);
     if (!user) return { ok: false, error: "User not found." };
     if (user.passwordHash !== p.currentPasswordHash) return { ok: false, error: "Current password is incorrect." };
-    updateRowById(SHEET_NAMES.USERS, "id", user.id, { passwordHash: p.newPasswordHash });
-    return { ok: true };
+    if (!isPasswordHash(p.newPasswordHash)) return { ok: false, error: "Enter a valid new password." };
+    const sessionVersion = Number(user.sessionVersion || 0) + 1;
+    updateRowById(SHEET_NAMES.USERS, "id", user.id, {
+      passwordHash: p.newPasswordHash,
+      sessionVersion,
+    });
+    return { ok: true, token: createSessionToken(Object.assign({}, user, { sessionVersion })) };
   },
+
+  logout() { return { ok: true }; },
 
   updateProfile(p) {
     const updates = Object.assign({}, p.updates);
@@ -524,6 +771,8 @@ const Actions = {
 
   getJobs(p) {
     let jobs = readRows(SHEET_NAMES.JOBS);
+    if (!p._actorId) jobs = jobs.filter((job) => job.status === "open");
+    else if (p._actorRole === "writer") jobs = jobs.filter((job) => job.status === "open");
     if (p && p.clientId) jobs = jobs.filter((j) => j.clientId === p.clientId);
     if (p && p.status) jobs = jobs.filter((j) => j.status === p.status);
     jobs.sort((a, b) => b.createdAt - a.createdAt);
@@ -714,83 +963,11 @@ const Actions = {
   },
 
   deposit(p) {
-    const method = p.method || "bank";
-    const cfg = getPaymentConfig();
-    let gateway = { success: true, reference: p.reference || uid("ref").toUpperCase(), simulated: true };
-
-    try {
-      if (method === "mpesa" && cfg.MPESA_CONSUMER_KEY) {
-        const callbackUrl = ScriptApp.getService().getUrl();
-        const r = mpesaSTKPush(cfg, p.accountRef, p.amount, p.accountRef, callbackUrl);
-        if (!r.success) return { ok: false, error: r.error };
-        // STK push is asynchronous in production (the customer must enter their PIN,
-        // then Safaricom calls back to doPost). For this reference implementation we
-        // credit the wallet immediately so the demo flow completes without requiring
-        // you to wire up the callback handler — see SETUP.md to make this fully async.
-        gateway = { success: true, reference: r.checkoutRequestId, simulated: false };
-      } else if (method === "paypal" && cfg.PAYPAL_CLIENT_ID) {
-        // See the note above mpesaBaseUrl/paypalPayout: PayPal deposits need a
-        // browser-side checkout approval flow. Falls back to simulated success.
-        gateway = { success: true, reference: p.reference || uid("ref").toUpperCase(), simulated: true };
-      }
-    } catch (err) {
-      return { ok: false, error: "Payment gateway error: " + err.message };
-    }
-
-    const wallets = readRows(SHEET_NAMES.WALLET);
-    const w = wallets.find((x) => x.userId === p.userId);
-    const newBal = (w ? Number(w.balance) : 0) + Number(p.amount);
-    if (w) updateRowById(SHEET_NAMES.WALLET, "userId", p.userId, { balance: newBal });
-    else appendRow(SHEET_NAMES.WALLET, { userId: p.userId, balance: newBal, escrow: 0 });
-    appendRow(SHEET_NAMES.PAYMENTS, {
-      id: uid("pay"), userId: p.userId, type: "deposit", amount: Number(p.amount), method,
-      accountRef: p.accountRef || "", accountName: p.accountName || "", reference: gateway.reference, createdAt: nowMs(),
-    });
-    notify(p.userId, "payment", "Deposit of $" + p.amount + " via " + method + " confirmed.");
-    return { ok: true, wallet: { userId: p.userId, balance: newBal }, reference: gateway.reference };
+    return { ok: false, error: "Wallet deposits are temporarily unavailable until payment-provider transactions can be independently verified." };
   },
 
   withdraw(p) {
-    const method = p.method || "bank";
-    const amount = Number(p.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Enter a valid withdrawal amount." };
-    if (["mpesa", "paypal", "bank"].indexOf(method) === -1) return { ok: false, error: "Choose a supported payout method." };
-    if (amount > SITE_CONFIG.MAX_WITHDRAWAL_USD) return { ok: false, error: "Withdrawals are capped at $" + SITE_CONFIG.MAX_WITHDRAWAL_USD + " per request." };
-    const accountRef = String(p.accountRef || "").trim();
-    const accountName = String(p.accountName || "").trim();
-    const bankName = String(p.bankName || "").trim();
-    if (method === "mpesa" && !/^(?:\+254|254|0)[17]\d{8}$/.test(accountRef.replace(/\s+/g, ""))) return { ok: false, error: "Enter a valid M-Pesa phone number." };
-    if (method === "paypal" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountRef)) return { ok: false, error: "Enter a valid PayPal email address." };
-    if (method === "bank" && (!bankName || !accountName || !accountRef)) return { ok: false, error: "Enter the bank name, account holder, and account number." };
-    const cfg = getPaymentConfig();
-    const w = readRows(SHEET_NAMES.WALLET).find((x) => x.userId === p.userId);
-    if (!w || Number(w.balance) < amount) return { ok: false, error: "Insufficient balance." };
-
-    let gateway = { success: true, reference: p.reference || uid("ref").toUpperCase(), simulated: true };
-    try {
-      if (method === "mpesa" && cfg.MPESA_CONSUMER_KEY) {
-        const callbackUrl = ScriptApp.getService().getUrl();
-        const r = mpesaB2CPayout(cfg, p.accountRef, amount, "InkConnect withdrawal", callbackUrl);
-        if (!r.success) return { ok: false, error: r.error };
-        gateway = { success: true, reference: r.conversationId, simulated: false };
-      } else if (method === "paypal" && cfg.PAYPAL_CLIENT_ID) {
-        const r = paypalPayout(cfg, p.accountRef, amount, "InkConnect withdrawal");
-        if (!r.success) return { ok: false, error: r.error };
-        gateway = { success: true, reference: r.batchId, simulated: false };
-      }
-    } catch (err) {
-      return { ok: false, error: "Payment gateway error: " + err.message };
-    }
-
-    const newBal = Number(w.balance) - amount;
-    updateRowById(SHEET_NAMES.WALLET, "userId", p.userId, { balance: newBal });
-    appendRow(SHEET_NAMES.PAYMENTS, {
-      id: uid("pay"), userId: p.userId, type: "withdraw", amount, method,
-      accountRef, accountName, bankName, bankBranch: String(p.bankBranch || "").trim(),
-      reference: gateway.reference, createdAt: nowMs(),
-    });
-    notify(p.userId, "payment", "Withdrawal of $" + amount + " via " + method + " requested.");
-    return { ok: true, wallet: { userId: p.userId, balance: newBal }, reference: gateway.reference };
+    return { ok: false, error: "Wallet withdrawals are temporarily unavailable until wallet balances and payout transactions are verified." };
   },
 
   getWallet(p) {
@@ -827,7 +1004,7 @@ const Actions = {
   },
 
   createTicket(p) {
-    const t = { id: uid("tik"), userId: p.userId || "", name: p.name, email: p.email, subject: p.subject, message: p.message, status: "open", createdAt: nowMs() };
+    const t = { id: uid("tik"), userId: p._actorId || "", name: p.name, email: p.email, subject: p.subject, message: p.message, status: "open", createdAt: nowMs() };
     appendRow(SHEET_NAMES.TICKETS, t);
     return { ok: true, ticket: t };
   },
@@ -864,6 +1041,7 @@ const Actions = {
   /** Admin: create a brand-new admin account directly — no registration
       flow, no access fee, active immediately. */
   adminCreateAdmin(p) {
+    if (!isPasswordHash(p.passwordHash)) return { ok: false, error: "Enter a valid password." };
     const users = readRows(SHEET_NAMES.USERS);
     if (users.find((u) => String(u.email).toLowerCase() === String(p.email).toLowerCase())) {
       return { ok: false, error: "An account with this email already exists." };
@@ -1155,7 +1333,7 @@ function notify(userId, type, text) {
 function setupSheets() {
   const ss = getDatabaseSpreadsheet();
   const schema = {
-    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy"],
+    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy", "sessionVersion"],
     Jobs: ["id", "clientId", "clientName", "title", "category", "budget", "description", "status", "createdAt", "deadline", "submissionFile", "submissionNote", "rejectionReason"],
     Applications: ["id", "jobId", "writerId", "writerName", "coverLetter", "proposedRate", "status", "createdAt"],
     Messages: ["id", "threadId", "fromId", "toId", "text", "createdAt", "read"],
@@ -1225,13 +1403,13 @@ function diagnoseSetup() {
     const users = readRows(SHEET_NAMES.USERS);
     const admins = users.filter((u) => u.role === "admin");
     if (admins.length === 0) {
-      lines.push("\nAdmin account: ❌ NONE FOUND — run seedAdminAccount() to create admin@inkconnect.com / Admin@123.");
+      lines.push("\nAdmin account: ❌ NONE FOUND — run seedAdminAccount() to create the first administrator.");
     } else {
       lines.push("\nAdmin account(s): ✅ " + admins.map((a) => a.email).join(", "));
     }
 
     const usersHeaders = ss.getSheetByName("Users") ? ss.getSheetByName("Users").getRange(1, 1, 1, ss.getSheetByName("Users").getLastColumn()).getValues()[0] : [];
-    const criticalCols = ["accessStatus", "referralCode", "referredBy", "passwordHash"];
+    const criticalCols = ["accessStatus", "referralCode", "referredBy", "passwordHash", "sessionVersion"];
     const missingCols = criticalCols.filter((c) => usersHeaders.indexOf(c) === -1);
     if (missingCols.length) {
       lines.push("\nUsers sheet is missing column(s): " + missingCols.join(", ") + " — run setupSheets() again to backfill them (this is the #1 cause of \"can't approve\" issues).");
@@ -1252,16 +1430,14 @@ function diagnoseSetup() {
 
 /**
  * Run once manually (select this function, click Run) right after
- * setupSheets() to create your first admin login: admin@inkconnect.com
- * / Admin@123. Change that password immediately after your first sign-in
- * (Admin Dashboard → Site Settings → Change your password), or edit the
- * DEFAULT_ADMIN_* constants below before running this and it will use
- * those instead. Safe to run more than once — does nothing if an admin
+ * setupSheets() to create your first administrator with a randomly
+ * generated one-time password, returned to the script owner. Change it
+ * immediately after signing in. Safe to run more than once; it does nothing if an admin
  * already exists.
  */
 function seedAdminAccount() {
   const DEFAULT_ADMIN_EMAIL = "admin@inkconnect.com";
-  const DEFAULT_ADMIN_PASSWORD = "Admin@123";
+  const DEFAULT_ADMIN_PASSWORD = Utilities.getUuid() + Utilities.getUuid();
 
   const existing = readRows(SHEET_NAMES.USERS).find((u) => u.role === "admin");
   if (existing) {

@@ -16,17 +16,23 @@ wire it up to a real Google Sheet.
 4. Choose **InkConnect → 2. Check setup** to verify the sheets and
    required columns.
 5. Choose **InkConnect → 3. Create admin account** to create the first
-   admin login: **`admin@inkconnect.com`** / **`Admin@123`**. Change
-   this temporary password immediately after signing in.
+   admin login. Copy the randomly generated one-time password from the
+   dialog and change it immediately after signing in.
+6. Choose **InkConnect → 4. Authorize password reset email** and approve
+   the additional mail permission.
 
 The setup, diagnostic, and admin functions are also available in the
 Apps Script editor's Run menu. For a standalone script, see the
 troubleshooting instructions below.
 
-Do not deploy the current backend as a public web app with real account
-or payment data until server-side authentication and permission checks
-are in place. Once secured and tested, set the deployed `/exec` URL in
-`assets/js/api.js`:
+The backend now requires short-lived server-side sessions for protected
+actions, restricts administrator actions, limits registration to client or
+writer accounts, and sends a one-time email code for password resets.
+However, this is not a substitute for an independent security review.
+Do not use it with real user or payment data until the complete deployment
+has been reviewed and tested. Wallet deposits and withdrawals are disabled
+until payment-provider verification is implemented. Set the deployed
+`/exec` URL in `assets/js/api.js` only for isolated testing:
    ```js
    const API_CONFIG = { GAS_URL: "https://script.google.com/macros/s/XXXXXXXX/exec" };
    ```
@@ -58,32 +64,32 @@ creates the required tabs with the correct column headers:
 
 Choose **InkConnect → 3. Create admin account** in the spreadsheet.
 Alternatively, run **`seedAdminAccount`** from the Apps Script editor.
-This adds one row to the `Users` tab with role `admin` and
-password `Admin@123` (hashed the same way the browser hashes it, so it
-logs in correctly on the first try). Sign in at `admin-login.html`,
-then change the password from Admin Dashboard → Settings.
+This adds one row to the `Users` tab with role `admin` and a randomly
+generated one-time password. Copy it from the script result, sign in at
+`admin-login.html`, then change the password from Admin Dashboard →
+Settings.
 
 Safe to run again later — it does nothing if an admin already exists.
-If you'd rather set a specific email/password from the start, open
-`seedAdminAccount()` in `Code.gs` and edit `DEFAULT_ADMIN_EMAIL` /
-`DEFAULT_ADMIN_PASSWORD` before running it.
+Run **InkConnect → 4. Authorize password reset email** once and approve
+the additional permission so account reset codes can be sent.
+The first admin account cannot be created through public registration.
 
 ## 3. Web app deployment
 
-Do not deploy the current backend as a public Web App for real account or
-payment data. `doPost` does not yet authenticate and authorize every
-request, so a publicly accessible deployment could expose or modify
-Sheet data. Deploy only after adding and testing server-side
-authentication and authorization. For local demo use, leave `GAS_URL`
-empty; the frontend uses browser `localStorage`.
+Deploy only to an isolated test spreadsheet until the backend and its
+Google account, Apps Script access settings, and all actions have received
+an independent security review. Protected requests use expiring bearer
+sessions, so the public website must use HTTPS. For local demo use, leave
+`GAS_URL` empty; the frontend uses browser `localStorage`.
 
 ## 4. Connect the frontend
 
-After securing and deploying the backend, open `assets/js/api.js` and set:
+After setting up the sheets and deploying the backend, copy the Web App URL
+that ends in `/exec` (not `/dev`). In `assets/js/api.js`, set:
 
 ```js
 const API_CONFIG = {
-  GAS_URL: "https://script.google.com/macros/s/XXXXXXXX/exec",
+  GAS_URL: "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE",
 };
 ```
 
@@ -93,6 +99,28 @@ to change, since `LocalAPI` and the real Apps Script backend both
 implement the exact same action contract (`register`, `login`,
 `postJob`, `getJobs`, `applyJob`, `sendMessage`, `deposit`, `withdraw`,
 etc.).
+
+Save and upload the updated `assets/js/api.js` to the same GitHub repository
+as the site. Open the published HTTPS site and check the browser's developer
+console. Run:
+
+```js
+API.healthCheck().then(console.log)
+```
+
+A successful result is `{ ok: true, message: "Google Sheets backend is
+connected and all required tabs exist." }`. If tabs are missing, run
+**InkConnect → 1. Setup / update sheets** in the spreadsheet, then deploy
+the latest Apps Script version again. If the response is not JSON or the
+browser reports a network/CORS error, confirm the URL is the deployed `/exec`
+URL, the Web App's access setting permits your site visitors, and the site
+is loaded over HTTPS.
+
+After the test succeeds, reload the site. The frontend will send its API
+requests to the Google Sheets backend instead of using browser `localStorage`.
+Each Apps Script code change requires updating the Web App deployment to use
+the latest version. Run **InkConnect → 1. Setup / update sheets** after
+updating the code so the `sessionVersion` column is added.
 
 ## 5. Notes on scaling to MySQL later
 
@@ -149,64 +177,14 @@ success callback: Apps Script independently verifies the reference,
 account email, KES currency, and exact configured amount before activation.
 Manual M-Pesa, PayPal, and bank-transfer proof submission remains available.
 
-## 8. Connecting M-Pesa and PayPal (deposits & withdrawals)
+## 8. Wallet deposits and withdrawals
 
-The wallet already has a full M-Pesa / PayPal / bank-transfer method
-picker on both the client's **Deposit** form and the writer's
-**Withdraw** form. Out of the box (no credentials configured) every
-method completes as a simulated instant success, so you can test the
-entire flow today. Add real credentials to switch specific methods
-over to live payments — you don't need to configure all of them.
-
-### M-Pesa (Safaricom Daraja API)
-
-1. Create an app at [developer.safaricom.co.ke](https://developer.safaricom.co.ke)
-   to get sandbox `Consumer Key` / `Consumer Secret`, and go live later
-   for production keys.
-2. In Apps Script: **Project Settings → Script Properties**, add:
-   - `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`
-   - `MPESA_SHORTCODE` (Paybill/Till number — `174379` for the Daraja sandbox)
-   - `MPESA_PASSKEY` (from the Daraja portal's STK Push simulator page)
-   - `MPESA_ENV` = `sandbox` or `production`
-3. This enables **deposits via STK Push** immediately — a real prompt
-   is sent to the phone number entered in the wallet form.
-4. **Withdrawals (B2C payouts)** additionally need `MPESA_INITIATOR_NAME`
-   and `MPESA_SECURITY_CREDENTIAL` (the initiator password encrypted
-   with Safaricom's public certificate — see Daraja's B2C docs). Without
-   these, M-Pesa withdrawals return a clear error rather than failing
-   silently.
-5. STK Push is asynchronous in real life (the customer must enter their
-   PIN, then Safaricom calls back to this same Web App URL). This
-   reference implementation credits the wallet optimistically when the
-   push is sent, and reverses it if `handleMpesaCallback` in `Code.gs`
-   receives a failure/cancellation. For stricter accounting, change
-   `Actions.deposit` to only credit the wallet from inside that callback.
-
-### PayPal
-
-1. Create an app at [developer.paypal.com](https://developer.paypal.com)
-   to get a `Client ID` / `Client Secret` (sandbox first, then live).
-2. Add Script Properties: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
-   `PAYPAL_ENV` = `sandbox` or `production`.
-3. This enables **withdrawals via the PayPal Payouts API** immediately
-   — funds are sent to the PayPal email entered in the wallet form.
-4. **Deposits via PayPal** need the PayPal JS SDK's browser-side
-   checkout approval flow (the client must approve the charge on
-   PayPal's own page), which doesn't fit a single Apps Script call.
-   `Code.gs` has a documented extension point in `Actions.deposit`
-   where you can call the Orders API's `/v2/checkout/orders` (create)
-   from the frontend, then `POST` the resulting order ID to a new
-   `capturePaypalOrder` action here to finalize and credit the wallet.
-
-### Bank / Other account
-
-Bank transfers are inherently manual/asynchronous (no public instant
-API), so both deposits and withdrawals via this method always record
-a reference and rely on manual confirmation — check `SupportTickets`
-or the `Payments` sheet periodically, or extend `Actions.deposit` /
-`Actions.withdraw` to call your own banking partner's API.
-After updating `Code.gs`, run `setupSheets()` once to add the
-`bankName` and `bankBranch` columns used to record bank payout requests.
+Wallet deposits and withdrawals are intentionally disabled in the live
+Apps Script backend. Never enable simulated success or credit a wallet
+because a payment request was started. Implement and independently test
+provider-side transaction verification, idempotency, and payout callbacks
+before enabling any real-money wallet flow. The provider helpers in
+`Code.gs` are not a complete or production-ready payment integration.
 
 ## 9. Client access-fee gate & job approval flow
 

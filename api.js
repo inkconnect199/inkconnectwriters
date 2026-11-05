@@ -3,7 +3,7 @@
    Talks to a Google Apps Script Web App using the exact same
    action contract implemented in /backend/Code.gs.
    When GAS_URL is empty, falls back to a local demo database
-   (localStorage) that mimics every backend action 1:1, so th
+   (localStorage) that mimics every backend action 1:1, so the
    whole site works instantly without any deployment.
    ============================================================ */
 

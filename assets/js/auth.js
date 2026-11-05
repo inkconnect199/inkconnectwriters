@@ -25,7 +25,8 @@ const Auth = {
     (remember ? sessionStorage : localStorage).removeItem(SESSION_KEY);
   },
 
-  logout() {
+  async logout() {
+    if (API_CONFIG.GAS_URL) await API.logout();
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     window.location.href = "index.html";
@@ -38,7 +39,7 @@ const Auth = {
       phone: form.phone, country: form.country, role: form.role,
       passwordHash, profilePic: form.profilePic || "", referralCode: form.referralCode || "",
     });
-    if (res.ok) Auth.setSession(res.user, "local-" + res.user.id, remember);
+    if (res.ok) Auth.setSession(res.user, res.token || "local-" + res.user.id, remember);
     return res;
   },
 
@@ -83,21 +84,25 @@ const Auth = {
   LocalDB.write(db);
 })();
 
-/* Forgot / change password.
-   No email transport in this client-only demo, so "forgot password"
-   verifies the email exists, then lets the person set a new password
-   directly — standing in for "click the emailed link, choose a new
-   password". The Apps Script backend can be extended with
-   MailApp.sendEmail() + a real token flow for production use. */
+/* Password reset uses a one-time email code in the Google Apps Script
+   backend; local demo mode retains its browser-only reset flow. */
 Auth.checkEmailExists = async function (email) {
   return API.checkEmailExists({ email });
 };
-Auth.resetPassword = async function (email, newPassword) {
+Auth.requestPasswordReset = async function (email) {
+  return API.requestPasswordReset({ email });
+};
+Auth.resetPassword = async function (email, newPassword, resetToken) {
   const newPasswordHash = await Auth.hash(newPassword);
-  return API.resetPassword({ email, newPasswordHash });
+  return API.resetPassword({ email, newPasswordHash, resetToken });
 };
 Auth.changePassword = async function (userId, currentPassword, newPassword) {
   const currentPasswordHash = await Auth.hash(currentPassword);
   const newPasswordHash = await Auth.hash(newPassword);
-  return API.changePassword({ userId, currentPasswordHash, newPasswordHash });
+  const res = await API.changePassword({ userId, currentPasswordHash, newPasswordHash });
+  const session = Auth.getSession();
+  if (res.ok && res.token && session) {
+    Auth.setSession(session.user, res.token, !!localStorage.getItem(SESSION_KEY));
+  }
+  return res;
 };

@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Admins have their own dedicated sign-in page — keep the public
       // login form for clients/writers only.
       if (res.user.role === "admin") {
+        if (API_CONFIG.GAS_URL) await API.logout();
         localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY);
         toast("Admin accounts sign in from the admin login page.", "error");
         return;
@@ -53,13 +54,14 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("forgot-step-email").style.display = "";
     document.getElementById("forgot-step-password").style.display = "none";
     document.getElementById("forgot-step-success").style.display = "none";
+    document.getElementById("forgot-reset-token-field").style.display = "none";
     document.getElementById("forgot-email-form").reset();
     document.getElementById("forgot-password-form").reset();
   }
 
   let forgotEmail = "";
 
-  // STEP 1: verify the email exists before letting anyone set a new password.
+  // Remote resets require a one-time email code; the local demo stays self-contained.
   document.getElementById("forgot-email-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const emailField = document.getElementById("forgot-email").closest(".field");
@@ -68,13 +70,20 @@ document.addEventListener("DOMContentLoaded", () => {
     Validate.clearError(emailField);
 
     const submitBtn = e.target.querySelector("button[type=submit]");
-    submitBtn.disabled = true; submitBtn.textContent = "Checking...";
-    const res = await Auth.checkEmailExists(email);
+    submitBtn.disabled = true; submitBtn.textContent = API_CONFIG.GAS_URL ? "Sending code..." : "Checking...";
+    const res = API_CONFIG.GAS_URL
+      ? await Auth.requestPasswordReset(email)
+      : await Auth.checkEmailExists(email);
     submitBtn.disabled = false; submitBtn.textContent = "Continue";
 
-    if (!res.exists) { Validate.showError(emailField, "No account found with that email."); return; }
+    if (API_CONFIG.GAS_URL && !res.ok) {
+      toast(res.error || "Could not send the reset code. Try again later.", "error");
+      return;
+    }
+    if (!API_CONFIG.GAS_URL && !res.exists) { Validate.showError(emailField, "No account found with that email."); return; }
     forgotEmail = email;
     document.getElementById("forgot-email-display").textContent = email;
+    document.getElementById("forgot-reset-token-field").style.display = API_CONFIG.GAS_URL ? "" : "none";
     document.getElementById("forgot-step-email").style.display = "none";
     document.getElementById("forgot-step-password").style.display = "";
   });
@@ -91,9 +100,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pass !== confirm || !confirm) { Validate.showError(confirmField, "Passwords do not match."); valid = false; } else Validate.clearError(confirmField);
     if (!valid) return;
 
+    const resetToken = document.getElementById("forgot-reset-token").value.trim();
+    if (API_CONFIG.GAS_URL && !resetToken) {
+      const field = document.getElementById("forgot-reset-token").closest(".field");
+      Validate.showError(field, "Enter the one-time code sent to your email.");
+      return;
+    }
     const submitBtn = e.target.querySelector("button[type=submit]");
     submitBtn.disabled = true; submitBtn.textContent = "Resetting...";
-    const res = await Auth.resetPassword(forgotEmail, pass);
+    const res = await Auth.resetPassword(forgotEmail, pass, resetToken);
     submitBtn.disabled = false; submitBtn.textContent = "Reset password";
 
     if (res.ok) {

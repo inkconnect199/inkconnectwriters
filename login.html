@@ -80,6 +80,7 @@
       <h3 class="h-3 mb-1">Choose a new password</h3>
       <p class="muted mb-3" style="font-size:.85rem;">Resetting password for <strong id="forgot-email-display"></strong>.</p>
       <form id="forgot-password-form" novalidate>
+        <div class="field" id="forgot-reset-token-field" style="display:none;"><label for="forgot-reset-token">Email reset code</label><input type="text" id="forgot-reset-token" autocomplete="one-time-code"><div class="field-error"></div></div>
         <div class="field"><label for="forgot-new-password">New password</label><input type="password" id="forgot-new-password" required><div class="field-error"></div></div>
         <div class="field"><label for="forgot-confirm-password">Confirm new password</label><input type="password" id="forgot-confirm-password" required><div class="field-error"></div></div>
         <button type="submit" class="btn btn-primary btn-block">Reset password</button>
