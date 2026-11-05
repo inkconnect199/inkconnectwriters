@@ -29,6 +29,10 @@
           <p class="muted mt-2" id="onboarding-step-label" aria-live="polite"></p>
         </div>
         <div id="onboarding-progress" class="flex-between mb-4" aria-label="Onboarding progress"></div>
+        <div id="onboarding-community" class="glass mb-4" style="display:none;padding:16px;text-align:center;">
+          <h2 class="h-3">Connect with our community</h2>
+          <div id="onboarding-community-links" class="flex mt-2" style="justify-content:center;flex-wrap:wrap;gap:10px;"></div>
+        </div>
 
         <section data-onboarding-step="1">
           <h2 class="h-3">Welcome, <span id="onboarding-name"></span></h2>
@@ -50,6 +54,7 @@
 
         <section data-onboarding-step="2" style="display:none;">
           <div id="onboarding-profile-fields"></div>
+          <p class="method-note mt-3">Next step: choose your skills or the writing services you need, then set work preferences.</p>
           <div class="flex-between mt-4" style="flex-wrap:wrap;gap:10px;">
             <button type="button" class="btn btn-ghost" data-onboarding-back="1">Back</button>
             <div class="flex gap-2">

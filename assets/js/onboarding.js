@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusEl = document.getElementById("onboarding-status");
   const profileFields = document.getElementById("onboarding-profile-fields");
   const preferenceFields = document.getElementById("onboarding-preference-fields");
+  renderCommunityLinks().catch((error) => console.error("Unable to load onboarding community links:", error));
   const categories = ["Blog Writing", "SEO Content", "Copywriting", "Technical Writing", "Academic Writing", "Creative Writing", "Email Marketing", "Scriptwriting"];
   let user = session.user;
   let step = Math.min(4, Math.max(1, Number(user.onboardingStep) || 1));
@@ -115,6 +116,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  async function renderCommunityLinks() {
+    const config = await getEffectiveSiteConfig();
+    const links = [
+      { url: config.COMMUNITY_WHATSAPP_LINK, label: "WhatsApp", mark: "☎", color: "#25D366" },
+      { url: config.COMMUNITY_FACEBOOK_LINK, label: "Facebook", mark: "f", color: "#1877F2" },
+      { url: config.COMMUNITY_TIKTOK_LINK, label: "TikTok", mark: "♪", color: "#111111" },
+    ];
+    const container = document.getElementById("onboarding-community-links");
+    links.forEach(({ url, label, mark, color }) => {
+      if (!url || !Validate.httpsUrl(url)) return;
+      const link = document.createElement("a");
+      link.className = "btn btn-sm";
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.setAttribute("aria-label", `Join InkConnect on ${label}`);
+      link.style.backgroundColor = color;
+      link.style.borderColor = color;
+      link.style.color = "#ffffff";
+      link.textContent = `${mark} ${label}`;
+      container.appendChild(link);
+    });
+    if (container.childElementCount) document.getElementById("onboarding-community").style.display = "block";
+  }
+
   function renderCategoryOptions() {
     return `<fieldset class="field" style="border:0;padding:0;margin:0;">
       <legend class="mb-2">${user.role === "writer" ? "Writing skills and services" : "Writing services you may need"} <span class="muted">(optional)</span></legend>
@@ -208,12 +234,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderStep(target) {
     step = target;
+    const stepNames = ["Welcome", "Profile", "Skills & preferences", "Review"];
     document.querySelectorAll("[data-onboarding-step]").forEach((section) => {
       section.style.display = Number(section.dataset.onboardingStep) === step ? "" : "none";
     });
-    document.getElementById("onboarding-step-label").textContent = `Step ${step} of 4`;
+    document.getElementById("onboarding-step-label").textContent = `Step ${step} of 4: ${stepNames[step - 1]}`;
     document.getElementById("onboarding-progress").innerHTML = [1, 2, 3, 4].map((number) =>
-      `<span class="tag" aria-current="${number === step ? "step" : "false"}" style="flex:1;text-align:center;opacity:${number <= step ? 1 : .45};">0${number}</span>`
+      `<span class="tag" aria-current="${number === step ? "step" : "false"}" style="flex:1;text-align:center;opacity:${number <= step ? 1 : .45};">0${number} · ${escapeHtml(stepNames[number - 1])}</span>`
     ).join("");
     if (step === 4) updateReview();
   }

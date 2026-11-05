@@ -58,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const presetRole = params.get("role");
   const roleInput = document.getElementById("role-input");
   const paymentSection = document.getElementById("client-payment-section");
+  const profileFields = document.getElementById("registration-profile-fields");
   const paystackOption = document.querySelector('#reg-payment-methods [data-method="paystack"]');
   if (!API_CONFIG.GAS_URL && paystackOption) paystackOption.style.display = "none";
   document.querySelector('#reg-payment-methods [data-method="paystack"]')?.addEventListener("click", () => {
@@ -92,24 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
       effectiveConfig.COMPANY_BANK_BRANCH ? `Branch / SWIFT: ${effectiveConfig.COMPANY_BANK_BRANCH}` : "",
     ].filter(Boolean);
     document.getElementById("fee-bank-details").textContent = bankDetails.join(" · ") || "Bank details will be provided by the administrator.";
-    const communityLinks = [
-      { url: effectiveConfig.COMMUNITY_WHATSAPP_LINK, label: "Join our community" },
-      { url: effectiveConfig.COMMUNITY_FACEBOOK_LINK, label: "Open community link" },
-      { url: effectiveConfig.COMMUNITY_TIKTOK_LINK, label: "Open community link" },
-      { url: effectiveConfig.SIGNUP_POPUP_COMMUNITY_LINK, label: "More community links" },
-    ].filter((link, index, links) => link.url && Validate.httpsUrl(link.url) && links.findIndex((item) => item.url === link.url) === index);
-    const communitySection = document.getElementById("registration-community");
-    const communityContainer = document.getElementById("registration-community-links");
-    communityLinks.forEach(({ url, label }) => {
-      const link = document.createElement("a");
-      link.className = "btn btn-outline btn-sm";
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = label;
-      communityContainer.appendChild(link);
-    });
-    if (communityLinks.length) communitySection.style.display = "block";
     if (effectiveConfig.COMPANY_SOCIAL_LINK) {
       document.getElementById("follow-us-link").href = effectiveConfig.COMPANY_SOCIAL_LINK;
       document.getElementById("follow-us-note").style.display = "block";
@@ -125,10 +108,78 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".role-option").forEach((o) => o.classList.remove("selected"));
     opt.classList.add("selected");
     roleInput.value = opt.dataset.role;
+    renderRegistrationProfileFields(opt.dataset.role);
     // Both clients and writers pay the same one-time access fee (each
     // toggle independently controllable in SITE_CONFIG).
     const showPayment = roleNeedsAccessFee(opt.dataset.role);
     paymentSection.style.display = showPayment ? "block" : "none";
+  }
+
+  function renderRegistrationProfileFields(role) {
+    const categories = ["Blog Writing", "SEO Content", "Copywriting", "Technical Writing", "Academic Writing", "Creative Writing", "Email Marketing", "Scriptwriting"];
+    const categoryChoices = categories.map((category) =>
+      `<label class="checkbox-row"><input type="checkbox" name="registration-skill" value="${escapeHtml(category)}"> ${escapeHtml(category)}</label>`
+    ).join("");
+    if (role === "writer") {
+      profileFields.innerHTML = `
+        <h3 class="h-3">Writer profile</h3>
+        <div class="field mt-3"><label for="registration-bio">Professional introduction</label><textarea id="registration-bio" maxlength="1200" placeholder="Tell clients about your writing experience and the work you do."></textarea></div>
+        <div class="field"><label>Writing skills</label><div class="grid registration-skill-grid">${categoryChoices}</div></div>
+        <div class="field-row">
+          <div class="field"><label for="registration-experience">Writing experience</label><select id="registration-experience"><option value="">Choose an experience range</option><option>Just starting</option><option>1-2 years</option><option>3-5 years</option><option>6-10 years</option><option>10+ years</option></select></div>
+          <div class="field"><label for="registration-rate">Starting hourly rate (USD)</label><input id="registration-rate" type="number" min="1" max="10000" placeholder="Optional"></div>
+        </div>
+        <div class="field"><label for="registration-education">Education or relevant training</label><input id="registration-education" type="text" maxlength="160" placeholder="Optional"></div>
+        <div class="field"><label for="registration-languages">Languages</label><input id="registration-languages" type="text" maxlength="160" placeholder="e.g. English, Swahili"></div>
+        <div class="field"><label for="registration-availability">Availability</label><select id="registration-availability"><option value="">Choose availability (optional)</option><option>Available</option><option>Limited</option><option>Unavailable</option></select></div>
+        <div class="field"><label for="registration-portfolio">Portfolio links (one HTTPS link per line)</label><textarea id="registration-portfolio" placeholder="Optional"></textarea></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="skip-registration-profile">Skip profile setup and add this later</button>`;
+    } else {
+      profileFields.innerHTML = `
+        <h3 class="h-3">Client profile</h3>
+        <div class="field mt-3"><label for="registration-organization">Company or organization</label><input id="registration-organization" type="text" maxlength="120" placeholder="Optional"></div>
+        <div class="field"><label for="registration-bio">Company or project overview</label><textarea id="registration-bio" maxlength="1200" placeholder="What are you working on or hoping to create? (optional)"></textarea></div>
+        <div class="field"><label>Writing services you may need</label><div class="grid registration-skill-grid">${categoryChoices}</div></div>
+        <div class="field"><label for="registration-budget">Typical project budget</label><select id="registration-budget"><option value="">Choose a budget range (optional)</option><option>Under $100</option><option>$100-$500</option><option>$501-$2,000</option><option>Over $2,000</option><option>Not sure yet</option></select></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="skip-registration-profile">Skip profile setup and add this later</button>`;
+    }
+    document.getElementById("skip-registration-profile").addEventListener("click", () => {
+      profileFields.querySelectorAll("input, textarea, select").forEach((field) => {
+        if (field.type === "checkbox") field.checked = false;
+        else field.value = "";
+      });
+      document.getElementById("registration-profile-setup").open = false;
+    });
+  }
+
+  function collectRegistrationProfile() {
+    const updates = {
+      bio: document.getElementById("registration-bio")?.value.trim() || "",
+      skills: [...profileFields.querySelectorAll('input[name="registration-skill"]:checked')].map((input) => input.value),
+      onboardingStep: 4,
+    };
+    if (roleInput.value === "writer") {
+      const rateText = document.getElementById("registration-rate").value.trim();
+      const portfolio = document.getElementById("registration-portfolio").value.split(/\r?\n/).map((link) => link.trim()).filter(Boolean);
+      if (rateText && (!Number.isFinite(Number(rateText)) || Number(rateText) < 1 || Number(rateText) > 10000)) {
+        toast("Enter an hourly rate between $1 and $10,000, or leave it blank.", "error");
+        return null;
+      }
+      if (portfolio.some((link) => !Validate.httpsUrl(link))) {
+        toast("Portfolio links must be valid HTTPS URLs, one per line.", "error");
+        return null;
+      }
+      updates.experience = document.getElementById("registration-experience").value;
+      updates.rate = rateText ? Number(rateText) : 0;
+      updates.education = document.getElementById("registration-education").value.trim();
+      updates.languages = document.getElementById("registration-languages").value.split(",").map((language) => language.trim()).filter(Boolean);
+      updates.availability = document.getElementById("registration-availability").value || "Available";
+      updates.portfolio = portfolio;
+    } else {
+      updates.organization = document.getElementById("registration-organization").value.trim();
+      updates.preferredBudget = document.getElementById("registration-budget").value;
+    }
+    return updates;
   }
 
   // Avatar preview
@@ -206,6 +257,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ok) { Validate.showError(field, msg); valid = false; } else Validate.clearError(field);
     });
     if (!document.getElementById("terms").checked) { toast("Please accept the Terms of Service to continue.", "error"); valid = false; }
+    const profileUpdates = collectRegistrationProfile();
+    if (!profileUpdates) valid = false;
 
     // Validate manual payment details only when Paystack checkout isn't selected.
     const needsPayment = roleNeedsAccessFee(roleInput.value);
@@ -235,6 +288,21 @@ document.addEventListener("DOMContentLoaded", () => {
       referralCode: document.getElementById("referralCode").value.trim(),
     });
 
+    let profileSaveFailed = false;
+    let profileSaveError = "";
+    if (res.ok) {
+      const profileRes = await API.updateProfile({ id: res.user.id, updates: profileUpdates });
+      if (profileRes.ok) {
+        res.user = profileRes.user;
+        const currentSession = Auth.getSession();
+        Auth.setSession(res.user, currentSession.token, true);
+      } else {
+        profileSaveFailed = true;
+        profileSaveError = profileRes.error || "Profile details could not be saved.";
+        console.error("Registration profile details could not be saved:", profileSaveError);
+      }
+    }
+
     if (res.ok && needsPayment && paymentMethod === "paystack") {
       submitBtn.textContent = "Opening secure checkout...";
       const payment = await PaystackAccess.start(res.user);
@@ -242,12 +310,12 @@ document.addEventListener("DOMContentLoaded", () => {
         res.user = payment.user;
         Auth.setSession(res.user, Auth.getSession().token, true);
         submitBtn.disabled = false;
-        toast("Payment verified — your account is active.", "success");
+        toast(profileSaveFailed ? "Account created, but profile details did not save. You can add them during onboarding." : "Payment verified — your account is active.", profileSaveFailed ? "error" : "success");
         setTimeout(() => { window.location.href = "onboarding.html"; }, 700);
         return;
       }
       Auth.setSession(res.user, Auth.getSession().token, true);
-      toast(payment.error, "error");
+      toast(profileSaveFailed ? `Account created, but profile details could not be saved. Finish them during onboarding. ${payment.error}` : payment.error, "error");
       submitBtn.disabled = false;
       setTimeout(() => { window.location.href = "onboarding.html"; }, 900);
       return;
@@ -269,10 +337,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (res.ok) {
       const currentSession = Auth.getSession();
       Auth.setSession(res.user, currentSession ? currentSession.token : "local-" + res.user.id, true);
-      toast(needsPayment ? "Account created — payment submitted for admin review." : "Account created! Redirecting to your dashboard...", "success");
+      toast(profileSaveFailed ? `Account created, but profile details could not be saved (${profileSaveError}). Finish them during onboarding.` : needsPayment ? "Account created — payment submitted for admin review." : "Account created! Redirecting to your dashboard...", profileSaveFailed ? "error" : "success");
       setTimeout(() => (window.location.href = "onboarding.html"), 700);
     } else {
       toast(res.error, "error");
     }
+
   });
 });
