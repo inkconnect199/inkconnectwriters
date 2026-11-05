@@ -9,7 +9,7 @@
 
 const API_CONFIG = {
   // Keep this in sync with the deployed Apps Script Web App version.
-  GAS_URL: "https://script.google.com/macros/s/AKfycbwMwJFEPGdtUHgzExE0v18ZMrykzVzPit15R9rraht3fiuMLO5g9-BNleA8tdRKv_ie/exec",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbzCeUsnnE5mbqNyVmiwSaNUHi2wSr5ETwFTRfF02gyFgvGpE0ZsKcYnpOjYELruulDY/exec",
 };
 
 const DB_KEY = "inkconnect_db_v1";
