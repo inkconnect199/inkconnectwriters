@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — InkConnect</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="admin-dashboard">
+<div id="loading-screen"><svg class="ink-loader" viewBox="0 0 160 60"><defs><linearGradient id="inkGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#4f7cff"/><stop offset="50%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs><path d="M10,40 C30,10 45,50 65,25 S95,10 110,35 S140,15 150,30"/></svg><span class="loading-label">Loading InkConnect</span></div>
+<div class="aurora-bg"><div class="grain"></div></div>
+
+<header class="site-header">
+  <div class="container flex-between">
+    <div class="flex" style="gap:10px;">
+      <button class="icon-btn" data-sidebar-toggle id="mobile-sidebar-btn" aria-label="Menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+      <a href="index.html" class="logo"><svg class="logo-mark" viewBox="0 0 40 40"><defs><linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f7cff"/><stop offset="100%" stop-color="#c084fc"/></linearGradient></defs><rect width="40" height="40" rx="12" fill="url(#logoGrad)"/><path d="M12 28 C16 14 24 26 28 12" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/></svg>InkConnect <span class="pill" style="margin-left:8px;font-size:.68rem;">Admin</span></a>
+    </div>
+    <div class="nav-actions">
+      <button class="icon-btn theme-toggle" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <div class="avatar sm" data-current-user-avatar></div>
+    </div>
+  </div>
+</header>
+
+<div class="dash-shell page-main">
+  <aside class="dash-sidebar" id="dash-sidebar">
+    <nav class="dash-nav">
+      <a href="#" data-section-link="overview" class="active"><span>📊</span> Dashboard</a>
+      <span class="section-label">Approvals</span>
+      <a href="#" data-section-link="job-approvals" id="nav-job-approvals"><span>✅</span> Job Approvals <span class="badge amber" id="job-approval-count" style="display:none;margin-left:auto;"></span></a>
+      <a href="#" data-section-link="access-requests" id="nav-access-requests"><span>💵</span> Access Requests <span class="badge amber" id="access-request-count" style="display:none;margin-left:auto;"></span></a>
+      <span class="section-label">Manage</span>
+      <a href="#" data-section-link="users" id="nav-users"><span>👥</span> Manage Users</a>
+      <a href="#" data-section-link="add-admin" id="nav-add-admin"><span>🛡️</span> Add Admin</a>
+      <a href="#" data-section-link="jobs" id="nav-jobs"><span>📄</span> Manage Jobs</a>
+      <a href="#" data-section-link="payments" id="nav-payments"><span>💳</span> Manage Payments</a>
+      <a href="#" data-section-link="wallet"><span>💰</span> Manage Wallet</a>
+      <a href="#" data-section-link="messages" id="nav-admin-messages"><span>💬</span> Manage Messages</a>
+      <a href="#" data-section-link="support" id="nav-support"><span>🎫</span> Manage Support</a>
+      <span class="section-label">Insights</span>
+      <a href="#" data-section-link="reports"><span>📈</span> Reports</a>
+      <a href="#" data-section-link="analytics" id="nav-analytics"><span>📊</span> Analytics</a>
+      <span class="section-label">System</span>
+      <a href="#" data-section-link="site-settings"><span>⚙️</span> Site Settings</a>
+      <a href="#" data-section-link="announcements"><span>📢</span> Announcements</a>
+      <a href="contact.html"><span>💬</span> Contact Us</a>
+      <a href="#" data-logout><span>🚪</span> Logout</a>
+    </nav>
+  </aside>
+
+  <div class="dash-main">
+
+    <!-- OVERVIEW -->
+    <section data-section="overview">
+      <div class="dash-topbar"><h1>Admin overview</h1></div>
+      <div class="grid kpi-grid">
+        <div class="glass kpi-card"><div class="kpi-icon">✍️</div><div class="kpi-val" id="kpi-writers">0</div><div class="kpi-label">Verified writers</div></div>
+        <div class="glass kpi-card"><div class="kpi-icon">🏢</div><div class="kpi-val" id="kpi-clients">0</div><div class="kpi-label">Clients</div></div>
+        <div class="glass kpi-card"><div class="kpi-icon">📄</div><div class="kpi-val" id="kpi-jobs">0</div><div class="kpi-label">Total jobs</div></div>
+        <div class="glass kpi-card"><div class="kpi-icon">💵</div><div class="kpi-val" id="kpi-paid">$0</div><div class="kpi-label">Total paid out</div></div>
+      </div>
+      <div class="glass panel">
+        <div class="panel-head"><h3 class="h-3">Platform breakdown</h3></div>
+        <div id="admin-chart"></div>
+      </div>
+    </section>
+
+    <!-- JOB APPROVALS -->
+    <section data-section="job-approvals" style="display:none;">
+      <div class="dash-topbar"><h1>Job approvals</h1></div>
+      <div id="job-approvals-list"></div>
+    </section>
+
+    <!-- ACCESS REQUESTS -->
+    <section data-section="access-requests" style="display:none;">
+      <div class="dash-topbar"><h1>Client access-fee requests</h1></div>
+      <div id="access-requests-list"></div>
+    </section>
+
+    <!-- USERS -->
+    <section data-section="users" style="display:none;">
+      <div class="dash-topbar"><h1>Manage users</h1></div>
+      <div class="glass panel" id="admin-users-list"></div>
+    </section>
+
+    <!-- ADD ADMIN -->
+    <section data-section="add-admin" style="display:none;">
+      <div class="dash-topbar"><h1>Add admin</h1></div>
+
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Create a new admin account</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">Creates an admin account directly — no registration flow, no access fee, active immediately. They sign in at <code>admin-login.html</code>.</p>
+        <form id="create-admin-form" novalidate>
+          <div class="field"><label for="new-admin-name">Full name</label><input type="text" id="new-admin-name" required><div class="field-error"></div></div>
+          <div class="field"><label for="new-admin-email">Email</label><input type="email" id="new-admin-email" required><div class="field-error"></div></div>
+          <div class="field-row">
+            <div class="field"><label for="new-admin-password">Password</label><input type="password" id="new-admin-password" required><div class="field-error"></div></div>
+            <div class="field"><label for="new-admin-confirm">Confirm password</label><input type="password" id="new-admin-confirm" required><div class="field-error"></div></div>
+          </div>
+          <button type="submit" class="btn btn-primary">Create admin account</button>
+        </form>
+      </div>
+
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Promote an existing user</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">Turns an existing client or writer account into an admin. Search by email, then confirm.</p>
+        <form id="promote-admin-form" novalidate>
+          <div class="field"><label for="promote-email">User's email</label><input type="email" id="promote-email" required placeholder="someone@example.com"></div>
+          <button type="submit" class="btn btn-outline">Find &amp; promote</button>
+        </form>
+        <div id="promote-result" class="mt-3"></div>
+      </div>
+    </section>
+
+    <!-- JOBS -->
+    <section data-section="jobs" style="display:none;">
+      <div class="dash-topbar"><h1>Manage jobs</h1></div>
+      <div class="glass panel" id="admin-jobs-list"></div>
+    </section>
+
+    <!-- PAYMENTS -->
+    <section data-section="payments" style="display:none;">
+      <div class="dash-topbar"><h1>Manage payments</h1></div>
+      <div id="admin-payments-list"></div>
+    </section>
+
+    <!-- WALLET -->
+    <section data-section="wallet" style="display:none;">
+      <div class="dash-topbar"><h1>Manage wallet</h1></div>
+      <p class="muted mb-3" style="font-size:.85rem;">Every user's wallet balance on the platform.</p>
+      <div class="glass panel" id="admin-wallets-list"></div>
+    </section>
+
+    <!-- MESSAGES -->
+    <section data-section="messages" style="display:none;">
+      <div class="dash-topbar"><h1>Manage messages</h1></div>
+      <p class="muted mb-3" style="font-size:.85rem;">Every conversation on the platform, for moderation and dispute resolution.</p>
+      <div class="glass chat-shell">
+        <div class="chat-list" id="admin-chat-list"></div>
+        <div class="chat-panel" id="admin-chat-panel" style="display:none;">
+          <div class="chat-header"><div class="avatar sm" data-chat-avatar></div><strong data-chat-name></strong></div>
+          <div class="chat-messages" data-chat-messages></div>
+          <div style="padding:12px 16px;border-top:1px solid var(--glass-border);" class="muted" style="font-size:.78rem;">👁️ Admin view — read only</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUPPORT -->
+    <section data-section="support" style="display:none;">
+      <div class="dash-topbar"><h1>Manage support</h1></div>
+      <div id="admin-tickets-list"></div>
+    </section>
+
+    <!-- REPORTS -->
+    <section data-section="reports" style="display:none;">
+      <div class="dash-topbar"><h1>Reports</h1></div>
+      <div class="glass panel">
+        <p class="body-md">Generate and export platform reports. Detailed CSV/PDF export can be wired to the Google Sheets backend via the <code>reports</code> action in Code.gs.</p>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section data-section="analytics" style="display:none;">
+      <div class="dash-topbar"><h1>Analytics</h1></div>
+      <div class="glass panel">
+        <div class="panel-head"><h3 class="h-3">Job completion rate</h3></div>
+        <div id="admin-donut"></div>
+      </div>
+    </section>
+
+    <!-- SITE SETTINGS -->
+    <section data-section="site-settings" style="display:none;">
+      <div class="dash-topbar"><h1>Site settings</h1></div>
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Platform</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">General branding and commission settings.</p>
+        <form id="site-settings-form">
+          <div class="field"><label for="site-name">Platform name</label><input type="text" id="site-name" name="siteName" value="InkConnect"></div>
+          <div class="field"><label for="commission">Platform commission (%)</label><input type="number" id="commission" name="commission" value="10" min="0" max="100"></div>
+          <button type="submit" class="btn btn-primary">Save platform settings</button>
+        </form>
+      </div>
+
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Client access-fee payment details</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">Shown to clients on registration and on the review page while their payment is pending. Changing this here takes effect immediately — no code edits needed.</p>
+        <form id="payment-settings-form" novalidate>
+          <div class="field-row">
+            <div class="field"><label for="fee-kes">Access fee (KES)</label><input type="number" id="fee-kes" name="ACCESS_FEE_KES" min="0" required></div>
+            <div class="field"><label for="fee-usd">Access fee (USD)</label><input type="number" id="fee-usd" name="ACCESS_FEE_USD" min="0" required></div>
+          </div>
+          <div class="field"><label for="company-mpesa">Company M-Pesa number</label><input type="text" id="company-mpesa" name="COMPANY_MPESA_NUMBER" required placeholder="e.g. 0712345678"></div>
+          <div class="field"><label for="company-paypal">Company PayPal email</label><input type="email" id="company-paypal" name="COMPANY_PAYPAL_EMAIL" required placeholder="payments@yourcompany.com"></div>
+          <div class="field-row">
+            <div class="field"><label for="company-bank-name">Bank name</label><input type="text" id="company-bank-name" name="COMPANY_BANK_NAME" placeholder="e.g. Equity Bank"></div>
+            <div class="field"><label for="company-bank-account-name">Account holder name</label><input type="text" id="company-bank-account-name" name="COMPANY_BANK_ACCOUNT_NAME" placeholder="Name on the account"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="company-bank-account-number">Account number</label><input type="text" id="company-bank-account-number" name="COMPANY_BANK_ACCOUNT_NUMBER" placeholder="Bank account number"></div>
+            <div class="field"><label for="company-bank-branch">Branch / SWIFT code</label><input type="text" id="company-bank-branch" name="COMPANY_BANK_BRANCH" placeholder="Optional"></div>
+          </div>
+          <div class="field">
+            <label for="community-whatsapp-link">Community WhatsApp invite link</label>
+            <input type="url" id="community-whatsapp-link" name="COMMUNITY_WHATSAPP_LINK" placeholder="https://chat.whatsapp.com/...">
+            <p class="method-note">Shown on the Join Our Community page after sign-in. Leave blank until the invite link is ready.</p>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="community-facebook-link">Community Facebook link</label><input type="url" id="community-facebook-link" name="COMMUNITY_FACEBOOK_LINK" placeholder="https://facebook.com/..."></div>
+            <div class="field"><label for="community-tiktok-link">Community TikTok link</label><input type="url" id="community-tiktok-link" name="COMMUNITY_TIKTOK_LINK" placeholder="https://www.tiktok.com/@..."></div>
+          </div>
+          <div class="field">
+            <label for="signup-popup-community-link">Signup popup community link</label>
+            <input type="url" id="signup-popup-community-link" name="SIGNUP_POPUP_COMMUNITY_LINK" placeholder="https://...">
+            <p class="method-note">Optional extra invite link shown in the signup popup across the site. Use any HTTPS community or social link.</p>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="signup-popup-background">Signup popup background</label><input type="color" id="signup-popup-background" name="SIGNUP_POPUP_BACKGROUND"></div>
+            <div class="field"><label for="signup-popup-accent">Popup and notification accent</label><input type="color" id="signup-popup-accent" name="SIGNUP_POPUP_ACCENT"><p class="method-note">This color highlights the signup popup and in-app notification bars.</p></div>
+          </div>
+          <div class="field">
+            <label for="company-social-link">Social / "Follow us" link <span class="muted">(optional — Linktree, etc.)</span></label>
+            <input type="url" id="company-social-link" name="COMPANY_SOCIAL_LINK" placeholder="https://linktr.ee/yourcompany">
+            <p class="method-note">Shown as "Follow us on all platforms" in the client/writer dashboard sidebar and on the registration page. Not a payment method. Leave blank to hide it.</p>
+          </div>
+          <button type="submit" class="btn btn-primary">Save payment details</button>
+        </form>
+      </div>
+
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Referral program &amp; withdrawal limits</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">The bonus a user earns when someone they referred is approved, and the cap on a single withdrawal request.</p>
+        <form id="referral-settings-form" novalidate>
+          <div class="field-row">
+            <div class="field"><label for="ref-bonus-kes">Referral bonus (KES)</label><input type="number" id="ref-bonus-kes" name="REFERRAL_BONUS_KES" min="0" required></div>
+            <div class="field"><label for="ref-bonus-usd">Referral bonus (USD)</label><input type="number" id="ref-bonus-usd" name="REFERRAL_BONUS_USD" min="0" required></div>
+          </div>
+          <div class="field"><label for="max-withdrawal">Maximum withdrawal per request (USD)</label><input type="number" id="max-withdrawal" name="MAX_WITHDRAWAL_USD" min="1" required></div>
+          <button type="submit" class="btn btn-primary">Save referral &amp; withdrawal settings</button>
+        </form>
+      </div>
+      <div class="glass panel" style="max-width:520px;">
+        <h3 class="h-3 mb-1">Change your password</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">Enter your current password to set a new one for this admin account.</p>
+        <form id="change-password-form" novalidate>
+          <div class="field"><label for="cp-current">Current password</label><input type="password" id="cp-current" required><div class="field-error"></div></div>
+          <div class="field"><label for="cp-new">New password</label><input type="password" id="cp-new" required><div class="field-error"></div></div>
+          <div class="field"><label for="cp-confirm">Confirm new password</label><input type="password" id="cp-confirm" required><div class="field-error"></div></div>
+          <button type="submit" class="btn btn-primary">Update password</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ANNOUNCEMENTS -->
+    <section data-section="announcements" style="display:none;">
+      <div class="dash-topbar"><h1>Announcements</h1></div>
+      <div class="glass panel" style="max-width:640px;">
+        <form id="announcement-form">
+          <div class="field"><label for="ann-text">Broadcast a message to all users</label><textarea id="ann-text" name="text" placeholder="e.g. Scheduled maintenance on Saturday 10pm UTC"></textarea></div>
+          <button type="submit" class="btn btn-primary">Publish announcement</button>
+        </form>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- USER DETAIL MODAL -->
+<div class="modal-overlay" id="user-detail-modal">
+  <div class="glass modal-box" style="max-width:560px;">
+    <button class="icon-btn modal-close" data-close-modal="user-detail-modal">✕</button>
+    <div id="user-detail-content"></div>
+  </div>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/payments.js"></script>
+<script src="assets/js/dashboard.js"></script>
+<script src="assets/js/admin-extra.js"></script>
+</body>
+</html>
