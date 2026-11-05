@@ -3,6 +3,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (session) {
     if (session.user.role === "admin") {
       window.location.href = "admin-dashboard.html";
+    } else if (Auth.needsOnboarding(session.user)) {
+      window.location.href = "onboarding.html";
     } else {
       const needsPaymentReview = roleNeedsAccessFee(session.user.role) && session.user.accessStatus !== "active";
       window.location.href = needsPaymentReview ? "registration-pending.html" : "community.html";
@@ -36,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       toast(`Welcome back, ${res.user.fullName.split(" ")[0]}!`, "success");
       const needsPaymentReview = roleNeedsAccessFee(res.user.role) && res.user.accessStatus !== "active";
-      const destination = needsPaymentReview ? "registration-pending.html" : "community.html";
+      const destination = Auth.needsOnboarding(res.user) ? "onboarding.html" : needsPaymentReview ? "registration-pending.html" : "community.html";
       setTimeout(() => (window.location.href = destination), 500);
     } else {
       toast(res.error, "error");

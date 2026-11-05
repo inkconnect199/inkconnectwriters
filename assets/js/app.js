@@ -210,7 +210,7 @@ function initNotificationPermissionControls() {
 async function initSignupPromo() {
   const interval = 10 * 60 * 1000;
   const nextPopupKey = "inkconnect_signup_popup_next_at";
-  const excludedPages = ["login.html", "register.html", "registration-pending.html", "admin-login.html"];
+  const excludedPages = ["login.html", "register.html", "registration-pending.html", "onboarding.html", "admin-login.html"];
   const page = window.location.pathname.split("/").pop() || "index.html";
   const modal = document.getElementById("signup-promo-modal") || createSignupPromoModal();
   const closeButton = modal.querySelector("[data-close-modal]");
@@ -286,10 +286,10 @@ async function initSignupPromo() {
   const community = modal.querySelector("#signup-promo-community");
   const links = [
     { url: config.SIGNUP_POPUP_COMMUNITY_LINK, label: "Join our community" },
-    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join WhatsApp" },
-    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Visit Facebook" },
-    { url: config.COMMUNITY_TIKTOK_LINK, label: "Follow on TikTok" },
-  ].filter((link, index, list) => link.url && /^https:\/\//i.test(link.url) && list.findIndex((item) => item.url === link.url) === index);
+    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join our community" },
+    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Visit community link" },
+    { url: config.COMMUNITY_TIKTOK_LINK, label: "Visit community link" },
+  ].filter((link, index, list) => link.url && Validate.httpsUrl(link.url) && list.findIndex((item) => item.url === link.url) === index);
   links.forEach(({ url, label }) => {
     const link = document.createElement("a");
     link.className = "btn btn-outline";
@@ -330,6 +330,7 @@ function createSignupPromoModal() {
 }
 
 function initNotificationPolling() {
+  if (document.body.dataset.page === "onboarding") return;
   let seenIds = null;
   let inFlight = false;
   let reportedError = false;
@@ -464,6 +465,14 @@ function initScrollReveal() {
 const Validate = {
   required(value) { return value && value.toString().trim().length > 0; },
   email(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); },
+  httpsUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+    } catch (error) {
+      return false;
+    }
+  },
   minLen(value, n) { return value && value.length >= n; },
   match(a, b) { return a === b; },
   phone(value) { return /^[+\d][\d\s-]{6,}$/.test(value); },

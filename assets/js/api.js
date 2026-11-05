@@ -220,6 +220,7 @@ const LocalAPI = {
       experience: "", languages: [], education: "", certificates: [], availability: "Available",
       portfolio: [], createdAt: Date.now(), verified: true,
       accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active",
+      organization: "", preferredBudget: "", onboardingComplete: false, onboardingStep: 1,
       referralCode: generateReferralCode(db, p.username || p.fullName),
       referredBy: referrer ? referrer.id : null,
     };

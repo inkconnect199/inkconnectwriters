@@ -22,7 +22,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
         <div class="rating mt-2">★ ${w.rating.toFixed(1)} <span class="muted" style="font-family:var(--font-body);">(${w.completedJobs} jobs)</span></div>
         <p class="body-md mt-2" style="font-size:.88rem;">${escapeHtml(w.bio || "")}</p>
+        ${(w.experience || w.availability) ? `<p class="muted mt-2" style="font-size:.8rem;">${[w.experience, w.availability].filter(Boolean).map(escapeHtml).join(" · ")}</p>` : ""}
+        ${Array.isArray(w.languages) && w.languages.length ? `<p class="muted mt-1" style="font-size:.8rem;">Languages: ${w.languages.map(escapeHtml).join(", ")}</p>` : ""}
         <div class="tag-row">${(w.skills || []).map((s) => `<span class="tag">${escapeHtml(s)}</span>`).join("")}</div>
+        ${Array.isArray(w.portfolio) ? w.portfolio.filter((url) => Validate.httpsUrl(url)).slice(0, 3).map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm mt-2">View portfolio sample</a>`).join("") : ""}
         ${session && session.user.role === "client"
           ? `<a href="client-dashboard.html" class="btn btn-primary btn-sm mt-3 w-full">Post a job for ${w.fullName.split(" ")[0]}</a>`
           : `<a href="${session ? "#" : "register.html?role=client"}" class="btn btn-outline btn-sm mt-3 w-full">${session ? "Sign in as a client to hire" : "Join as a client to hire"}</a>`}

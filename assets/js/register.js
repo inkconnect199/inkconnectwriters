@@ -92,6 +92,24 @@ document.addEventListener("DOMContentLoaded", () => {
       effectiveConfig.COMPANY_BANK_BRANCH ? `Branch / SWIFT: ${effectiveConfig.COMPANY_BANK_BRANCH}` : "",
     ].filter(Boolean);
     document.getElementById("fee-bank-details").textContent = bankDetails.join(" · ") || "Bank details will be provided by the administrator.";
+    const communityLinks = [
+      { url: effectiveConfig.COMMUNITY_WHATSAPP_LINK, label: "Join our community" },
+      { url: effectiveConfig.COMMUNITY_FACEBOOK_LINK, label: "Open community link" },
+      { url: effectiveConfig.COMMUNITY_TIKTOK_LINK, label: "Open community link" },
+      { url: effectiveConfig.SIGNUP_POPUP_COMMUNITY_LINK, label: "More community links" },
+    ].filter((link, index, links) => link.url && Validate.httpsUrl(link.url) && links.findIndex((item) => item.url === link.url) === index);
+    const communitySection = document.getElementById("registration-community");
+    const communityContainer = document.getElementById("registration-community-links");
+    communityLinks.forEach(({ url, label }) => {
+      const link = document.createElement("a");
+      link.className = "btn btn-outline btn-sm";
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = label;
+      communityContainer.appendChild(link);
+    });
+    if (communityLinks.length) communitySection.style.display = "block";
     if (effectiveConfig.COMPANY_SOCIAL_LINK) {
       document.getElementById("follow-us-link").href = effectiveConfig.COMPANY_SOCIAL_LINK;
       document.getElementById("follow-us-note").style.display = "block";
@@ -225,13 +243,13 @@ document.addEventListener("DOMContentLoaded", () => {
         Auth.setSession(res.user, Auth.getSession().token, true);
         submitBtn.disabled = false;
         toast("Payment verified — your account is active.", "success");
-        setTimeout(() => { window.location.href = res.user.role === "writer" ? "writer-dashboard.html" : "client-dashboard.html"; }, 700);
+        setTimeout(() => { window.location.href = "onboarding.html"; }, 700);
         return;
       }
       Auth.setSession(res.user, Auth.getSession().token, true);
       toast(payment.error, "error");
       submitBtn.disabled = false;
-      setTimeout(() => { window.location.href = "registration-pending.html"; }, 900);
+      setTimeout(() => { window.location.href = "onboarding.html"; }, 900);
       return;
     }
 
@@ -249,10 +267,10 @@ document.addEventListener("DOMContentLoaded", () => {
     submitBtn.disabled = false; submitBtn.textContent = "Create Account";
 
     if (res.ok) {
-      Auth.setSession(res.user, "local-" + res.user.id, true);
+      const currentSession = Auth.getSession();
+      Auth.setSession(res.user, currentSession ? currentSession.token : "local-" + res.user.id, true);
       toast(needsPayment ? "Account created — payment submitted for admin review." : "Account created! Redirecting to your dashboard...", "success");
-      const map = { client: needsPayment ? "registration-pending.html" : "client-dashboard.html", writer: needsPayment ? "registration-pending.html" : "writer-dashboard.html", admin: "admin-dashboard.html" };
-      setTimeout(() => (window.location.href = map[res.user.role] || "index.html"), 700);
+      setTimeout(() => (window.location.href = "onboarding.html"), 700);
     } else {
       toast(res.error, "error");
     }

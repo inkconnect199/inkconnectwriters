@@ -25,11 +25,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Clients and writers must clear the access-fee gate before their
   // dashboard initializes. If not yet approved, send them to the
   // dedicated review page instead of rendering the dashboard.
-  if ((page === "client-dashboard" || page === "writer-dashboard") && roleNeedsAccessFee(role)) {
+  if (page === "client-dashboard" || page === "writer-dashboard") {
     const fresh = await API.getUser({ id: CURRENT_SESSION.user.id });
     const user = fresh.ok ? fresh.user : CURRENT_SESSION.user;
     if (fresh.ok) { Auth.setSession(user, CURRENT_SESSION.token, true); CURRENT_SESSION.user = user; }
-    if ((user.accessStatus || "unpaid") !== "active") {
+    if (Auth.needsOnboarding(user)) {
+      window.location.href = "onboarding.html";
+      return;
+    }
+    if (roleNeedsAccessFee(role) && (user.accessStatus || "unpaid") !== "active") {
       window.location.href = "registration-pending.html";
       return;
     }
@@ -486,10 +490,17 @@ const ClientDash = {
     if (!form) return;
     const u = CURRENT_SESSION.user;
     form.fullName.value = u.fullName; form.email.value = u.email; form.phone.value = u.phone || ""; form.country.value = u.country || "";
+    form.organization.value = u.organization || ""; form.bio.value = u.bio || "";
+    form.skills.value = (Array.isArray(u.skills) ? u.skills : []).join(", "); form.preferredBudget.value = u.preferredBudget || "";
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const res = await API.updateProfile({ id: u.id, updates: { fullName: form.fullName.value, phone: form.phone.value, country: form.country.value } });
-      if (res.ok) { toast("Profile updated", "success"); Auth.setSession(res.user, CURRENT_SESSION.token, true); populateProfileWidgets(res.user); }
+      const res = await API.updateProfile({ id: u.id, updates: {
+        fullName: form.fullName.value.trim(), phone: form.phone.value.trim(), country: form.country.value.trim(),
+        organization: form.organization.value.trim(), bio: form.bio.value.trim(),
+        skills: form.skills.value.split(",").map((skill) => skill.trim()).filter(Boolean), preferredBudget: form.preferredBudget.value,
+      } });
+      if (res.ok) { toast("Profile updated", "success"); CURRENT_SESSION.user = res.user; Auth.setSession(res.user, CURRENT_SESSION.token, true); populateProfileWidgets(res.user); }
+      else toast(res.error, "error");
     });
   },
 };
@@ -636,10 +647,25 @@ const WriterDash = {
     if (!form) return;
     const u = CURRENT_SESSION.user;
     form.fullName.value = u.fullName; form.bio.value = u.bio || ""; form.skills.value = (u.skills || []).join(", "); form.rate.value = u.rate || "";
+    form.experience.value = u.experience || ""; form.education.value = u.education || "";
+    form.languages.value = (Array.isArray(u.languages) ? u.languages : []).join(", ");
+    form.availability.value = u.availability || "Available";
+    form.portfolio.value = (Array.isArray(u.portfolio) ? u.portfolio : []).join("\n");
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const res = await API.updateProfile({ id: u.id, updates: { fullName: form.fullName.value, bio: form.bio.value, skills: form.skills.value.split(",").map((s) => s.trim()).filter(Boolean), rate: Number(form.rate.value) } });
-      if (res.ok) { toast("Profile updated", "success"); Auth.setSession(res.user, CURRENT_SESSION.token, true); populateProfileWidgets(res.user); }
+      const portfolio = form.portfolio.value.split(/\r?\n/).map((link) => link.trim()).filter(Boolean);
+      if (portfolio.some((link) => !Validate.httpsUrl(link))) { toast("Portfolio links must be valid HTTPS URLs, one per line.", "error"); return; }
+      const rate = Number(form.rate.value);
+      if (!Number.isFinite(rate) || rate < 0 || rate > 10000) { toast("Enter an hourly rate between $0 and $10,000.", "error"); return; }
+      const res = await API.updateProfile({ id: u.id, updates: {
+        fullName: form.fullName.value.trim(), bio: form.bio.value.trim(),
+        skills: form.skills.value.split(",").map((skill) => skill.trim()).filter(Boolean), rate,
+        experience: form.experience.value, education: form.education.value.trim(),
+        languages: form.languages.value.split(",").map((language) => language.trim()).filter(Boolean),
+        availability: form.availability.value, portfolio,
+      } });
+      if (res.ok) { toast("Profile updated", "success"); CURRENT_SESSION.user = res.user; Auth.setSession(res.user, CURRENT_SESSION.token, true); populateProfileWidgets(res.user); }
+      else toast(res.error, "error");
     });
   },
 };

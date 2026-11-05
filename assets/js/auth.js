@@ -25,6 +25,10 @@ const Auth = {
     (remember ? sessionStorage : localStorage).removeItem(SESSION_KEY);
   },
 
+  needsOnboarding(user) {
+    return !!user && (user.onboardingComplete === false || user.onboardingComplete === "false");
+  },
+
   async logout() {
     if (API_CONFIG.GAS_URL) await API.logout();
     localStorage.removeItem(SESSION_KEY);

@@ -56,15 +56,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const config = await getEffectiveSiteConfig();
   const invite = document.getElementById("community-invite");
   const links = [
-    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join WhatsApp", pattern: /^https:\/\/(chat\.whatsapp\.com|wa\.me)\//i, primary: true },
-    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Follow on Facebook", pattern: /^https:\/\/([a-z0-9-]+\.)?facebook\.com\//i },
-    { url: config.COMMUNITY_TIKTOK_LINK, label: "Follow on TikTok", pattern: /^https:\/\/([a-z0-9-]+\.)?tiktok\.com\//i },
+    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join our community", primary: true },
+    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Visit community link" },
+    { url: config.COMMUNITY_TIKTOK_LINK, label: "Visit community link" },
   ];
   let validLinkCount = 0;
-  links.forEach(({ url, label, pattern, primary }) => {
+  links.forEach(({ url, label, primary }) => {
     if (!url) return;
-    if (!pattern.test(url)) {
-      toast(`The configured ${label.replace(/^(Join|Follow on) /, "")} link is invalid.`, "error");
+    if (!Validate.httpsUrl(url)) {
+      toast("A configured community link is invalid.", "error");
       return;
     }
     const link = document.createElement("a");

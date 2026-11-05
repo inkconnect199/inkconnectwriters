@@ -67,10 +67,10 @@ document.addEventListener("DOMContentLoaded", () => {
         COMPANY_SOCIAL_LINK: paymentForm.COMPANY_SOCIAL_LINK.value.trim(),
       };
       if (!Validate.email(updates.COMPANY_PAYPAL_EMAIL)) return toast("Enter a valid PayPal email.", "error");
-      if (updates.COMMUNITY_WHATSAPP_LINK && !/^https:\/\/(chat\.whatsapp\.com|wa\.me)\//i.test(updates.COMMUNITY_WHATSAPP_LINK)) return toast("Enter a valid WhatsApp invite link starting with https://chat.whatsapp.com/ or https://wa.me/.", "error");
-      if (updates.COMMUNITY_FACEBOOK_LINK && !/^https:\/\/([a-z0-9-]+\.)?facebook\.com\//i.test(updates.COMMUNITY_FACEBOOK_LINK)) return toast("Enter a Facebook link starting with https://facebook.com/.", "error");
-      if (updates.COMMUNITY_TIKTOK_LINK && !/^https:\/\/([a-z0-9-]+\.)?tiktok\.com\//i.test(updates.COMMUNITY_TIKTOK_LINK)) return toast("Enter a TikTok link starting with https://tiktok.com/.", "error");
-      if (updates.SIGNUP_POPUP_COMMUNITY_LINK && !/^https:\/\//i.test(updates.SIGNUP_POPUP_COMMUNITY_LINK)) return toast("Signup popup community link must start with https://.", "error");
+      if (updates.COMMUNITY_WHATSAPP_LINK && !Validate.httpsUrl(updates.COMMUNITY_WHATSAPP_LINK)) return toast("Enter a valid HTTPS community invite link.", "error");
+      if (updates.COMMUNITY_FACEBOOK_LINK && !Validate.httpsUrl(updates.COMMUNITY_FACEBOOK_LINK)) return toast("Enter a valid HTTPS community link.", "error");
+      if (updates.COMMUNITY_TIKTOK_LINK && !Validate.httpsUrl(updates.COMMUNITY_TIKTOK_LINK)) return toast("Enter a valid HTTPS community link.", "error");
+      if (updates.SIGNUP_POPUP_COMMUNITY_LINK && !Validate.httpsUrl(updates.SIGNUP_POPUP_COMMUNITY_LINK)) return toast("Signup popup community link must be a valid HTTPS URL.", "error");
       if (updates.COMPANY_SOCIAL_LINK && !/^https?:\/\//.test(updates.COMPANY_SOCIAL_LINK)) return toast("Social link must start with http:// or https://", "error");
       const res = await API.updateSiteSettings({ updates });
       if (res.ok) { applyNotificationAccent(await getEffectiveSiteConfig(true)); toast("Site settings updated — live immediately.", "success"); }

@@ -231,9 +231,14 @@
       <div class="glass panel" style="max-width:520px;">
         <form id="writer-settings-form">
           <div class="field"><label for="w-fullName">Full name</label><input type="text" id="w-fullName" name="fullName"></div>
-          <div class="field"><label for="w-bio">Bio</label><textarea id="w-bio" name="bio"></textarea></div>
+          <div class="field"><label for="w-bio">Professional introduction</label><textarea id="w-bio" name="bio" maxlength="1200"></textarea></div>
           <div class="field"><label for="w-skills">Skills (comma separated)</label><input type="text" id="w-skills" name="skills"></div>
           <div class="field"><label for="w-rate">Hourly rate (USD)</label><input type="number" id="w-rate" name="rate" min="0"></div>
+          <div class="field"><label for="w-experience">Writing experience</label><select id="w-experience" name="experience"><option value="">Choose an experience range</option><option>Just starting</option><option>1-2 years</option><option>3-5 years</option><option>6-10 years</option><option>10+ years</option></select></div>
+          <div class="field"><label for="w-education">Education or relevant training</label><input type="text" id="w-education" name="education" maxlength="160"></div>
+          <div class="field"><label for="w-languages">Languages (comma separated)</label><input type="text" id="w-languages" name="languages" maxlength="160" placeholder="e.g. English, Swahili"></div>
+          <div class="field"><label for="w-availability">Availability</label><select id="w-availability" name="availability"><option>Available</option><option>Limited</option><option>Unavailable</option></select></div>
+          <div class="field"><label for="w-portfolio">Portfolio links (one HTTPS link per line)</label><textarea id="w-portfolio" name="portfolio" placeholder="https://example.com/your-work"></textarea></div>
           <button type="submit" class="btn btn-primary">Save changes</button>
         </form>
       </div>
