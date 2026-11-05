@@ -21,6 +21,13 @@ wire it up to a real Google Sheet.
 6. Choose **InkConnect → 4. Authorize password reset email** and approve
    the additional mail permission.
 
+When updating an existing deployment, replace `backend/Code.gs` with the
+current version, save it, run **InkConnect → 1. Setup / update sheets**
+to add new columns without deleting existing data, then deploy a new
+version of the Apps Script web app. The account onboarding flow uses
+additional user columns for role-specific profile details and saved
+onboarding progress.
+
 The setup, diagnostic, and admin functions are also available in the
 Apps Script editor's Run menu. For a standalone script, see the
 troubleshooting instructions below.

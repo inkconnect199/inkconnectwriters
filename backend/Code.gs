@@ -160,11 +160,14 @@ function scopeRequestToActor(action, payload, session) {
   }
   if (action === "deposit" || action === "withdraw") payload.userId = session.id;
   if (action === "updateProfile") {
-    const allowedFields = ["fullName", "phone", "country", "bio", "skills", "rate", "experience", "languages", "education", "certificates", "availability", "portfolio", "profilePic"];
+    const allowedFields = ["fullName", "phone", "country", "bio", "skills", "rate", "experience", "languages", "education", "certificates", "availability", "portfolio", "profilePic", "organization", "preferredBudget", "onboardingComplete", "onboardingStep"];
     payload.updates = Object.keys(payload.updates || {}).reduce((safe, key) => {
       if (allowedFields.indexOf(key) !== -1) safe[key] = payload.updates[key];
       return safe;
     }, {});
+    ["skills", "languages", "certificates", "portfolio"].forEach((key) => {
+      if (Array.isArray(payload.updates[key])) payload.updates[key] = JSON.stringify(payload.updates[key]);
+    });
   }
 }
 
@@ -180,7 +183,7 @@ function validateActionAccess(action, payload, session) {
   }
   if (session.role !== "admin" && roleNeedsAccessFee(session.role) && session.accessStatus !== "active") {
     const pendingAllowed = [
-      "changePassword", "getUser", "submitAccessPayment", "initializePaystackAccessPayment",
+      "changePassword", "getUser", "updateProfile", "submitAccessPayment", "initializePaystackAccessPayment",
       "verifyPaystackAccessPayment", "logout",
     ];
     if (pendingAllowed.indexOf(action) === -1) {
@@ -571,8 +574,22 @@ function sanitizeUser(u) {
   // field the frontend always treats as text (phone numbers typed without
   // a leading 0/+ are the most common case that gets silently turned into
   // a Number by Sheets).
-  ["fullName", "username", "email", "phone", "country", "bio", "referralCode", "referredBy"].forEach((k) => {
+  ["fullName", "username", "email", "phone", "country", "bio", "organization", "preferredBudget", "referralCode", "referredBy"].forEach((k) => {
     if (copy[k] !== undefined) copy[k] = asText(copy[k]);
+  });
+  ["skills", "languages", "certificates", "portfolio"].forEach((k) => {
+    if (copy[k] === undefined || Array.isArray(copy[k])) return;
+    const value = asText(copy[k]).trim();
+    if (!value) {
+      copy[k] = [];
+      return;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      copy[k] = Array.isArray(parsed) ? parsed : value.split(",").map((item) => item.trim()).filter(Boolean);
+    } catch (error) {
+      copy[k] = value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
   });
   return copy;
 }
@@ -649,6 +666,8 @@ const Actions = {
       country: p.country, role: p.role, passwordHash: p.passwordHash, profilePic: p.profilePic || "",
       bio: "", skills: "", rate: 0, rating: 0, completedJobs: 0, createdAt: nowMs(), verified: true, suspended: false,
       accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active", accessRejectionReason: "", sessionVersion: 0,
+      organization: "", preferredBudget: "", experience: "", languages: "", education: "",
+      certificates: "", availability: "Available", portfolio: "", onboardingComplete: false, onboardingStep: 1,
       referralCode: generateReferralCode(users, p.username || p.fullName), referredBy: referrer ? referrer.id : "",
     };
     appendRow(SHEET_NAMES.USERS, user);
@@ -763,7 +782,9 @@ const Actions = {
 
   updateProfile(p) {
     const updates = Object.assign({}, p.updates);
-    if (Array.isArray(updates.skills)) updates.skills = updates.skills.join(",");
+    ["skills", "languages", "certificates", "portfolio"].forEach((key) => {
+      if (Array.isArray(updates[key])) updates[key] = JSON.stringify(updates[key]);
+    });
     updateRowById(SHEET_NAMES.USERS, "id", p.id, updates);
     const user = readRows(SHEET_NAMES.USERS).find((u) => u.id === p.id);
     return { ok: true, user: sanitizeUser(user) };
@@ -1333,7 +1354,7 @@ function notify(userId, type, text) {
 function setupSheets() {
   const ss = getDatabaseSpreadsheet();
   const schema = {
-    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy", "sessionVersion"],
+    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy", "sessionVersion", "experience", "languages", "education", "certificates", "availability", "portfolio", "organization", "preferredBudget", "onboardingComplete", "onboardingStep"],
     Jobs: ["id", "clientId", "clientName", "title", "category", "budget", "description", "status", "createdAt", "deadline", "submissionFile", "submissionNote", "rejectionReason"],
     Applications: ["id", "jobId", "writerId", "writerName", "coverLetter", "proposedRate", "status", "createdAt"],
     Messages: ["id", "threadId", "fromId", "toId", "text", "createdAt", "read"],

@@ -123,33 +123,66 @@ document.addEventListener("DOMContentLoaded", () => {
     if (role === "writer") {
       profileFields.innerHTML = `
         <h3 class="h-3">Writer profile</h3>
-        <div class="field mt-3"><label for="registration-bio">Professional introduction</label><textarea id="registration-bio" maxlength="1200" placeholder="Tell clients about your writing experience and the work you do."></textarea></div>
-        <div class="field"><label>Writing skills</label><div class="grid registration-skill-grid">${categoryChoices}</div></div>
+        <div class="field mt-3"><label for="registration-bio">Professional introduction <span class="muted">(optional)</span></label><textarea id="registration-bio" maxlength="1200" placeholder="Tell clients about your writing experience and the work you do."></textarea></div>
+        <div class="field registration-quiz-field" data-quiz-field="skills"><label id="registration-skills-label">Writing skills <span class="muted">(choose at least one)</span></label><div class="grid registration-skill-grid" role="group" aria-labelledby="registration-skills-label">${categoryChoices}</div><div class="field-error" aria-live="polite"></div></div>
         <div class="field-row">
-          <div class="field"><label for="registration-experience">Writing experience</label><select id="registration-experience"><option value="">Choose an experience range</option><option>Just starting</option><option>1-2 years</option><option>3-5 years</option><option>6-10 years</option><option>10+ years</option></select></div>
+          <div class="field registration-quiz-field" data-quiz-field="experience"><label for="registration-experience">Writing experience <span class="muted">(required)</span></label><select id="registration-experience" required><option value="">Choose an experience range</option><option>Just starting</option><option>1-2 years</option><option>3-5 years</option><option>6-10 years</option><option>10+ years</option></select><div class="field-error" aria-live="polite"></div></div>
           <div class="field"><label for="registration-rate">Starting hourly rate (USD)</label><input id="registration-rate" type="number" min="1" max="10000" placeholder="Optional"></div>
         </div>
-        <div class="field"><label for="registration-education">Education or relevant training</label><input id="registration-education" type="text" maxlength="160" placeholder="Optional"></div>
-        <div class="field"><label for="registration-languages">Languages</label><input id="registration-languages" type="text" maxlength="160" placeholder="e.g. English, Swahili"></div>
-        <div class="field"><label for="registration-availability">Availability</label><select id="registration-availability"><option value="">Choose availability (optional)</option><option>Available</option><option>Limited</option><option>Unavailable</option></select></div>
+        <div class="field"><label for="registration-education">Education or relevant training <span class="muted">(optional)</span></label><input id="registration-education" type="text" maxlength="160" placeholder="Optional"></div>
+        <div class="field"><label for="registration-languages">Languages <span class="muted">(optional)</span></label><input id="registration-languages" type="text" maxlength="160" placeholder="e.g. English, Swahili"></div>
+        <div class="field"><label for="registration-availability">Availability <span class="muted">(optional)</span></label><select id="registration-availability"><option value="">Choose availability (optional)</option><option>Available</option><option>Limited</option><option>Unavailable</option></select></div>
         <div class="field"><label for="registration-portfolio">Portfolio links (one HTTPS link per line)</label><textarea id="registration-portfolio" placeholder="Optional"></textarea></div>
-        <button type="button" class="btn btn-ghost btn-sm" id="skip-registration-profile">Skip profile setup and add this later</button>`;
+        `;
     } else {
       profileFields.innerHTML = `
         <h3 class="h-3">Client profile</h3>
-        <div class="field mt-3"><label for="registration-organization">Company or organization</label><input id="registration-organization" type="text" maxlength="120" placeholder="Optional"></div>
-        <div class="field"><label for="registration-bio">Company or project overview</label><textarea id="registration-bio" maxlength="1200" placeholder="What are you working on or hoping to create? (optional)"></textarea></div>
-        <div class="field"><label>Writing services you may need</label><div class="grid registration-skill-grid">${categoryChoices}</div></div>
-        <div class="field"><label for="registration-budget">Typical project budget</label><select id="registration-budget"><option value="">Choose a budget range (optional)</option><option>Under $100</option><option>$100-$500</option><option>$501-$2,000</option><option>Over $2,000</option><option>Not sure yet</option></select></div>
-        <button type="button" class="btn btn-ghost btn-sm" id="skip-registration-profile">Skip profile setup and add this later</button>`;
+        <div class="field mt-3"><label for="registration-organization">Company or organization <span class="muted">(optional)</span></label><input id="registration-organization" type="text" maxlength="120" placeholder="Optional"></div>
+        <div class="field"><label for="registration-bio">Company or project overview <span class="muted">(optional)</span></label><textarea id="registration-bio" maxlength="1200" placeholder="What are you working on or hoping to create? (optional)"></textarea></div>
+        <div class="field registration-quiz-field" data-quiz-field="skills"><label id="registration-skills-label">Writing services you may need <span class="muted">(choose at least one)</span></label><div class="grid registration-skill-grid" role="group" aria-labelledby="registration-skills-label">${categoryChoices}</div><div class="field-error" aria-live="polite"></div></div>
+        <div class="field registration-quiz-field" data-quiz-field="budget"><label for="registration-budget">Typical project budget <span class="muted">(required)</span></label><select id="registration-budget" required><option value="">Choose a budget range</option><option>Under $100</option><option>$100-$500</option><option>$501-$2,000</option><option>Over $2,000</option><option>Not sure yet</option></select><div class="field-error" aria-live="polite"></div></div>`;
     }
-    document.getElementById("skip-registration-profile").addEventListener("click", () => {
-      profileFields.querySelectorAll("input, textarea, select").forEach((field) => {
-        if (field.type === "checkbox") field.checked = false;
-        else field.value = "";
+    profileFields.querySelectorAll('input[name="registration-skill"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        if (profileFields.querySelector('input[name="registration-skill"]:checked')) {
+          Validate.clearError(profileFields.querySelector('[data-quiz-field="skills"]'));
+        }
       });
-      document.getElementById("registration-profile-setup").open = false;
     });
+    profileFields.querySelectorAll("select[required]").forEach((select) => {
+      select.addEventListener("change", () => {
+        if (select.value) Validate.clearError(select.closest(".registration-quiz-field"));
+      });
+    });
+  }
+
+  function validateRegistrationQuiz() {
+    let valid = true;
+    const skillField = profileFields.querySelector('[data-quiz-field="skills"]');
+    const hasSkills = profileFields.querySelector('input[name="registration-skill"]:checked');
+    if (!hasSkills) {
+      Validate.showError(skillField, roleInput.value === "writer"
+        ? "Choose at least one writing skill to continue."
+        : "Choose at least one writing service you may need.");
+      valid = false;
+    } else {
+      Validate.clearError(skillField);
+    }
+
+    const requiredSelect = profileFields.querySelector("select[required]");
+    if (!requiredSelect || !requiredSelect.value) {
+      const field = requiredSelect?.closest(".registration-quiz-field");
+      if (field) {
+        Validate.showError(field, roleInput.value === "writer"
+          ? "Choose your writing experience to continue."
+          : "Choose a budget range, or select Not sure yet.");
+      }
+      valid = false;
+    } else {
+      Validate.clearError(requiredSelect.closest(".registration-quiz-field"));
+    }
+    if (!valid) profileFields.querySelector(".has-error")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return valid;
   }
 
   function collectRegistrationProfile() {
@@ -236,6 +269,10 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
 
     if (!roleInput.value) { toast("Please choose whether you're a client or a writer.", "error"); return; }
+    if (!validateRegistrationQuiz()) {
+      toast("Please answer the required signup questions before creating your account.", "error");
+      return;
+    }
     if (!profilePicData) {
       toast("Please upload a profile picture before creating your account.", "error");
       document.getElementById("profile-picture").click();

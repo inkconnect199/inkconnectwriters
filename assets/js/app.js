@@ -285,20 +285,39 @@ async function initSignupPromo() {
 
   const community = modal.querySelector("#signup-promo-community");
   const links = [
-    { url: config.SIGNUP_POPUP_COMMUNITY_LINK, label: "Join our community" },
-    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join our community" },
-    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Visit community link" },
-    { url: config.COMMUNITY_TIKTOK_LINK, label: "Visit community link" },
+    { url: config.SIGNUP_POPUP_COMMUNITY_LINK, ...communityLinkDetails(config.SIGNUP_POPUP_COMMUNITY_LINK) },
+    { url: config.COMMUNITY_WHATSAPP_LINK, label: "WhatsApp", color: "#25D366" },
+    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Facebook", color: "#1877F2" },
+    { url: config.COMMUNITY_TIKTOK_LINK, label: "TikTok", color: "#111111" },
   ].filter((link, index, list) => link.url && Validate.httpsUrl(link.url) && list.findIndex((item) => item.url === link.url) === index);
-  links.forEach(({ url, label }) => {
+  links.forEach(({ url, label, color }) => {
     const link = document.createElement("a");
     link.className = "btn btn-outline";
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = label;
+    if (color) {
+      link.style.backgroundColor = color;
+      link.style.borderColor = color;
+      link.style.color = "#ffffff";
+    }
     community.appendChild(link);
   });
+}
+
+function communityLinkDetails(value) {
+  if (!value) return { label: "Open community link" };
+  let host;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch (error) {
+    return { label: "Open community link" };
+  }
+  if (host === "wa.me" || host === "whatsapp.com" || host.endsWith(".whatsapp.com")) return { label: "WhatsApp", color: "#25D366" };
+  if (host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.com" || host.endsWith(".fb.com")) return { label: "Facebook", color: "#1877F2" };
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return { label: "TikTok", color: "#111111" };
+  return { label: "Open community link" };
 }
 
 function createSignupPromoModal() {

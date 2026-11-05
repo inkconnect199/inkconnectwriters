@@ -56,23 +56,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   const config = await getEffectiveSiteConfig();
   const invite = document.getElementById("community-invite");
   const links = [
-    { url: config.COMMUNITY_WHATSAPP_LINK, label: "Join our community", primary: true },
-    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Visit community link" },
-    { url: config.COMMUNITY_TIKTOK_LINK, label: "Visit community link" },
+    { url: config.COMMUNITY_WHATSAPP_LINK, label: "WhatsApp", color: "#25D366" },
+    { url: config.COMMUNITY_FACEBOOK_LINK, label: "Facebook", color: "#1877F2" },
+    { url: config.COMMUNITY_TIKTOK_LINK, label: "TikTok", color: "#111111" },
   ];
   let validLinkCount = 0;
-  links.forEach(({ url, label, primary }) => {
+  links.forEach(({ url, label, color }) => {
     if (!url) return;
     if (!Validate.httpsUrl(url)) {
       toast("A configured community link is invalid.", "error");
       return;
     }
     const link = document.createElement("a");
-    link.className = primary ? "btn btn-primary" : "btn btn-outline";
+    link.className = "btn btn-outline";
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = label;
+    link.style.backgroundColor = color;
+    link.style.borderColor = color;
+    link.style.color = "#ffffff";
     invite.appendChild(link);
     validLinkCount += 1;
   });

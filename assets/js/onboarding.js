@@ -128,9 +128,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       isWhatsAppUrl(config.SIGNUP_POPUP_COMMUNITY_LINK) ? config.SIGNUP_POPUP_COMMUNITY_LINK : ""
     );
     const links = [
-      { url: whatsappUrl, label: "Open WhatsApp community", mark: "☎", color: "#25D366" },
-      { url: config.COMMUNITY_FACEBOOK_LINK, label: "Open Facebook community", mark: "f", color: "#1877F2" },
-      { url: config.COMMUNITY_TIKTOK_LINK, label: "Open TikTok community", mark: "♪", color: "#111111" },
+      { url: whatsappUrl, label: "WhatsApp", mark: "☎", color: "#25D366" },
+      { url: config.COMMUNITY_FACEBOOK_LINK, label: "Facebook", mark: "f", color: "#1877F2" },
+      { url: config.COMMUNITY_TIKTOK_LINK, label: "TikTok", mark: "♪", color: "#111111" },
     ];
     const container = document.getElementById("onboarding-community-links");
     const status = document.getElementById("onboarding-community-status");
@@ -146,7 +146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       link.href = String(url).trim();
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.setAttribute("aria-label", label);
+      link.setAttribute("aria-label", `Open ${label} community`);
       link.style.backgroundColor = color;
       link.style.borderColor = color;
       link.style.color = "#ffffff";
