@@ -796,16 +796,17 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; line-height
 .tx-check { width:56px; height:56px; border-radius:50%; background: rgba(52,211,153,0.15); display:flex; align-items:center; justify-content:center; margin: 0 auto 16px; font-size:1.6rem; color: var(--aurora-mint); }
 .tx-ref { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-2); margin-top: 8px; }
 .method-badge { display:inline-flex; align-items:center; gap:5px; font-size:0.72rem; padding:3px 9px; border-radius: var(--r-pill); background: var(--glass-fill); border:1px solid var(--glass-border); }
-/* Fix for overlapping header navigation and hero layers */
-header, .site-header {
-    position: relative !important;
-    z-index: 100 !important;
-    width: 100%;
-}
-
-/* Force hide stuck loading text/preloaders if JS fails */
-#loading-screen, .ink-loader, .loading-label {
+/* Ultimate force-hide for any stuck loading layout elements */
+#loading-screen, 
+#loading, 
+.loading, 
+.loader, 
+.ink-loader, 
+.loading-label,
+[class*="loading"], 
+[id*="loading"] {
     display: none !important;
     opacity: 0 !important;
     visibility: hidden !important;
+    pointer-events: none !important;
 }
