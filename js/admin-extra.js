@@ -1,0 +1,104 @@
+document.addEventListener("DOMContentLoaded", () => {
+  const settingsForm = document.getElementById("site-settings-form");
+  if (settingsForm) settingsForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    localStorage.setItem("inkconnect_site_settings", JSON.stringify({ siteName: settingsForm.siteName.value, commission: settingsForm.commission.value }));
+    toast("Site settings saved", "success");
+  });
+
+  const annForm = document.getElementById("announcement-form");
+  if (annForm) annForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = annForm.text.value.trim();
+    if (!text) return toast("Write an announcement first", "error");
+    const submitBtn = annForm.querySelector("button[type=submit]");
+    submitBtn.disabled = true; submitBtn.textContent = "Publishing...";
+    const res = await API.broadcastAnnouncement({ text });
+    submitBtn.disabled = false; submitBtn.textContent = "Publish announcement";
+    if (res.ok) {
+      toast(`Announcement sent to ${res.recipientCount} user${res.recipientCount === 1 ? "" : "s"}`, "success");
+      annForm.reset();
+    } else {
+      toast(res.error, "error");
+    }
+  });
+
+  // Client access-fee payment details (M-Pesa / PayPal) — editable here
+  // instead of in code. Pre-fill with current effective values whenever
+  // the Site Settings section is opened.
+  const paymentForm = document.getElementById("payment-settings-form");
+  if (paymentForm) {
+    document.querySelector('[data-section-link="site-settings"]')?.addEventListener("click", async () => {
+      const c = await getEffectiveSiteConfig(true);
+      paymentForm.ACCESS_FEE_KES.value = c.ACCESS_FEE_KES;
+      paymentForm.ACCESS_FEE_USD.value = c.ACCESS_FEE_USD;
+      paymentForm.COMPANY_MPESA_NUMBER.value = c.COMPANY_MPESA_NUMBER;
+      paymentForm.COMPANY_PAYPAL_EMAIL.value = c.COMPANY_PAYPAL_EMAIL;
+      paymentForm.COMPANY_BANK_NAME.value = c.COMPANY_BANK_NAME || "";
+      paymentForm.COMPANY_BANK_ACCOUNT_NAME.value = c.COMPANY_BANK_ACCOUNT_NAME || "";
+      paymentForm.COMPANY_BANK_ACCOUNT_NUMBER.value = c.COMPANY_BANK_ACCOUNT_NUMBER || "";
+      paymentForm.COMPANY_BANK_BRANCH.value = c.COMPANY_BANK_BRANCH || "";
+      paymentForm.COMMUNITY_WHATSAPP_LINK.value = c.COMMUNITY_WHATSAPP_LINK || "";
+      paymentForm.COMMUNITY_FACEBOOK_LINK.value = c.COMMUNITY_FACEBOOK_LINK || "";
+      paymentForm.COMMUNITY_TIKTOK_LINK.value = c.COMMUNITY_TIKTOK_LINK || "";
+      paymentForm.SIGNUP_POPUP_COMMUNITY_LINK.value = c.SIGNUP_POPUP_COMMUNITY_LINK || "";
+      paymentForm.SIGNUP_POPUP_BACKGROUND.value = c.SIGNUP_POPUP_BACKGROUND || "#10152b";
+      paymentForm.SIGNUP_POPUP_ACCENT.value = c.SIGNUP_POPUP_ACCENT || "#7657f6";
+      paymentForm.COMPANY_SOCIAL_LINK.value = c.COMPANY_SOCIAL_LINK || "";
+    });
+
+    paymentForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const updates = {
+        ACCESS_FEE_KES: Number(paymentForm.ACCESS_FEE_KES.value),
+        ACCESS_FEE_USD: Number(paymentForm.ACCESS_FEE_USD.value),
+        COMPANY_MPESA_NUMBER: paymentForm.COMPANY_MPESA_NUMBER.value.trim(),
+        COMPANY_PAYPAL_EMAIL: paymentForm.COMPANY_PAYPAL_EMAIL.value.trim(),
+        COMPANY_BANK_NAME: paymentForm.COMPANY_BANK_NAME.value.trim(),
+        COMPANY_BANK_ACCOUNT_NAME: paymentForm.COMPANY_BANK_ACCOUNT_NAME.value.trim(),
+        COMPANY_BANK_ACCOUNT_NUMBER: paymentForm.COMPANY_BANK_ACCOUNT_NUMBER.value.trim(),
+        COMPANY_BANK_BRANCH: paymentForm.COMPANY_BANK_BRANCH.value.trim(),
+        COMMUNITY_WHATSAPP_LINK: paymentForm.COMMUNITY_WHATSAPP_LINK.value.trim(),
+        COMMUNITY_FACEBOOK_LINK: paymentForm.COMMUNITY_FACEBOOK_LINK.value.trim(),
+        COMMUNITY_TIKTOK_LINK: paymentForm.COMMUNITY_TIKTOK_LINK.value.trim(),
+        SIGNUP_POPUP_COMMUNITY_LINK: paymentForm.SIGNUP_POPUP_COMMUNITY_LINK.value.trim(),
+        SIGNUP_POPUP_BACKGROUND: paymentForm.SIGNUP_POPUP_BACKGROUND.value,
+        SIGNUP_POPUP_ACCENT: paymentForm.SIGNUP_POPUP_ACCENT.value,
+        COMPANY_SOCIAL_LINK: paymentForm.COMPANY_SOCIAL_LINK.value.trim(),
+      };
+      if (!Validate.email(updates.COMPANY_PAYPAL_EMAIL)) return toast("Enter a valid PayPal email.", "error");
+      if (updates.COMMUNITY_WHATSAPP_LINK && !/^https:\/\/(chat\.whatsapp\.com|wa\.me)\//i.test(updates.COMMUNITY_WHATSAPP_LINK)) return toast("Enter a valid WhatsApp invite link starting with https://chat.whatsapp.com/ or https://wa.me/.", "error");
+      if (updates.COMMUNITY_FACEBOOK_LINK && !/^https:\/\/([a-z0-9-]+\.)?facebook\.com\//i.test(updates.COMMUNITY_FACEBOOK_LINK)) return toast("Enter a Facebook link starting with https://facebook.com/.", "error");
+      if (updates.COMMUNITY_TIKTOK_LINK && !/^https:\/\/([a-z0-9-]+\.)?tiktok\.com\//i.test(updates.COMMUNITY_TIKTOK_LINK)) return toast("Enter a TikTok link starting with https://tiktok.com/.", "error");
+      if (updates.SIGNUP_POPUP_COMMUNITY_LINK && !/^https:\/\//i.test(updates.SIGNUP_POPUP_COMMUNITY_LINK)) return toast("Signup popup community link must start with https://.", "error");
+      if (updates.COMPANY_SOCIAL_LINK && !/^https?:\/\//.test(updates.COMPANY_SOCIAL_LINK)) return toast("Social link must start with http:// or https://", "error");
+      const res = await API.updateSiteSettings({ updates });
+      if (res.ok) { applyNotificationAccent(await getEffectiveSiteConfig(true)); toast("Site settings updated — live immediately.", "success"); }
+      else toast(res.error, "error");
+    });
+  }
+
+  // Referral bonus + max withdrawal cap — same pattern as the payment
+  // details form above: pre-fill on open, save through updateSiteSettings.
+  const referralForm = document.getElementById("referral-settings-form");
+  if (referralForm) {
+    document.querySelector('[data-section-link="site-settings"]')?.addEventListener("click", async () => {
+      const c = await getEffectiveSiteConfig(true);
+      referralForm.REFERRAL_BONUS_KES.value = c.REFERRAL_BONUS_KES;
+      referralForm.REFERRAL_BONUS_USD.value = c.REFERRAL_BONUS_USD;
+      referralForm.MAX_WITHDRAWAL_USD.value = c.MAX_WITHDRAWAL_USD;
+    });
+
+    referralForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const updates = {
+        REFERRAL_BONUS_KES: Number(referralForm.REFERRAL_BONUS_KES.value),
+        REFERRAL_BONUS_USD: Number(referralForm.REFERRAL_BONUS_USD.value),
+        MAX_WITHDRAWAL_USD: Number(referralForm.MAX_WITHDRAWAL_USD.value),
+      };
+      const res = await API.updateSiteSettings({ updates });
+      if (res.ok) { await getEffectiveSiteConfig(true); toast("Referral and withdrawal settings updated.", "success"); }
+      else toast(res.error, "error");
+    });
+  }
+});
