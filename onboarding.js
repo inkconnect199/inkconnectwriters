@@ -16,7 +16,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusEl = document.getElementById("onboarding-status");
   const profileFields = document.getElementById("onboarding-profile-fields");
   const preferenceFields = document.getElementById("onboarding-preference-fields");
-  renderCommunityLinks().catch((error) => console.error("Unable to load onboarding community links:", error));
+  renderCommunityLinks().catch((error) => {
+    console.error("Unable to load onboarding community links:", error);
+    document.getElementById("onboarding-community-status").textContent = "Community links could not be loaded. Please refresh the page or contact support.";
+    toast("Could not load community links. " + (error instanceof Error ? error.message : String(error)), "error");
+  });
   const categories = ["Blog Writing", "SEO Content", "Copywriting", "Technical Writing", "Academic Writing", "Creative Writing", "Email Marketing", "Scriptwriting"];
   let user = session.user;
   let step = Math.min(4, Math.max(1, Number(user.onboardingStep) || 1));
@@ -117,18 +121,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function renderCommunityLinks() {
-    const config = await getEffectiveSiteConfig();
+    const result = await API.getSiteSettings();
+    if (!result.ok) throw new Error(result.error || "Site settings request failed.");
+    const config = result.settings || SITE_CONFIG;
     const links = [
       { url: config.COMMUNITY_WHATSAPP_LINK, label: "Open WhatsApp community", mark: "☎", color: "#25D366" },
       { url: config.COMMUNITY_FACEBOOK_LINK, label: "Open Facebook community", mark: "f", color: "#1877F2" },
       { url: config.COMMUNITY_TIKTOK_LINK, label: "Open TikTok community", mark: "♪", color: "#111111" },
     ];
     const container = document.getElementById("onboarding-community-links");
+    const status = document.getElementById("onboarding-community-status");
+    let displayedCount = 0;
     links.forEach(({ url, label, mark, color }) => {
-      if (!url || !Validate.httpsUrl(url)) return;
+      if (!url) return;
+      if (!Validate.httpsUrl(String(url).trim())) {
+        console.warn(`Skipping invalid configured community URL for ${label}.`);
+        return;
+      }
       const link = document.createElement("a");
       link.className = "btn btn-sm";
-      link.href = url;
+      link.href = String(url).trim();
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.setAttribute("aria-label", label);
@@ -137,8 +149,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       link.style.color = "#ffffff";
       link.textContent = `${mark} ${label}`;
       container.appendChild(link);
+      displayedCount += 1;
     });
-    if (container.childElementCount) document.getElementById("onboarding-community").style.display = "block";
+    status.textContent = displayedCount
+      ? "Choose a platform to open its InkConnect community."
+      : "No community links are configured yet. Add them in Admin Dashboard → Site Settings.";
   }
 
   function renderCategoryOptions() {
