@@ -8,9 +8,8 @@
    ============================================================ */
 
 const API_CONFIG = {
-  // Paste your deployed Google Apps Script Web App URL here, e.g.
-  // "https://script.google.com/macros/s/AKfycb.../exec"
-  GAS_URL: "https://script.google.com/macros/s/AKfycbyCNs3Ryv9bEVWf6XJMTEfCdNPc7YkOOgANw2uTPlQVCoCBwcA0dRzUxRuwANMuXcQ/exec",
+  // Keep this in sync with the deployed Apps Script Web App version.
+  GAS_URL: "https://script.google.com/macros/s/AKfycbwMwJFEPGdtUHgzExE0v18ZMrykzVzPit15R9rraht3fiuMLO5g9-BNleA8tdRKv_ie/exec",
 };
 
 const DB_KEY = "inkconnect_db_v1";
@@ -152,16 +151,35 @@ const LocalDB = {
 /* ---------------- Core request dispatcher ---------------- */
 async function apiRequest(action, payload = {}) {
   if (API_CONFIG.GAS_URL) {
+    let res;
     try {
-      const res = await fetch(API_CONFIG.GAS_URL, {
+      res = await fetch(API_CONFIG.GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action, payload }),
+        body: JSON.stringify({
+          action,
+          payload,
+          token: typeof Auth !== "undefined" && Auth.getSession() ? Auth.getSession().token : "",
+        }),
       });
-      return await res.json();
     } catch (err) {
-      return { ok: false, error: "Network error contacting backend: " + err.message };
+      return {
+        ok: false,
+        error: "Could not contact the Google Sheets backend. Check that GAS_URL contains the deployed /exec URL, the Web App is accessible, and this site is hosted over HTTPS. Details: " + err.message,
+      };
     }
+
+    let result;
+    try {
+      result = await res.json();
+    } catch (err) {
+      return {
+        ok: false,
+        error: "The backend did not return JSON (HTTP " + res.status + "). Confirm the /exec URL and Web App access settings, then deploy the latest Apps Script version.",
+      };
+    }
+    if (!res.ok) return { ok: false, error: "Backend returned HTTP " + res.status + "." };
+    return result;
   }
   return LocalAPI.handle(action, payload);
 }
@@ -746,6 +764,8 @@ function awardReferralBonus(db, referredUser) {
 
 /* ---------------- Public API object used across pages ---------------- */
 const API = {
+  healthCheck: () => apiRequest("healthCheck"),
+  logout: () => apiRequest("logout"),
   register: (payload) => apiRequest("register", payload),
   login: (payload) => apiRequest("login", payload),
   getWriters: () => apiRequest("getWriters"),
@@ -776,6 +796,7 @@ const API = {
   updateProfile: (payload) => apiRequest("updateProfile", payload),
   getUser: (payload) => apiRequest("getUser", payload),
   checkEmailExists: (payload) => apiRequest("checkEmailExists", payload),
+  requestPasswordReset: (payload) => apiRequest("requestPasswordReset", payload),
   resetPassword: (payload) => apiRequest("resetPassword", payload),
   changePassword: (payload) => apiRequest("changePassword", payload),
   createTicket: (payload) => apiRequest("createTicket", payload),
