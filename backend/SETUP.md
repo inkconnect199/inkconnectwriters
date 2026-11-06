@@ -20,6 +20,8 @@ wire it up to a real Google Sheet.
    dialog and change it immediately after signing in.
 6. Choose **InkConnect → 4. Authorize password reset email** and approve
    the additional mail permission.
+7. Choose **InkConnect → 5. Prepare private ID storage** and approve
+   Google Drive access before enabling identity checks.
 
 When updating an existing deployment, replace `backend/Code.gs` with the
 current version, save it, run **InkConnect → 1. Setup / update sheets**
@@ -67,6 +69,11 @@ creates the required tabs with the correct column headers:
 
 `Users, Jobs, Applications, Messages, Payments, Wallet, Notifications, Reviews, SupportTickets, Settings, AccessRequests`
 
+The Users sheet also gets identity-review status and metadata columns.
+`setupSheets()` adds these columns to an existing spreadsheet without
+removing data. Identity images are stored in a private Google Drive folder,
+not in the sheet cells.
+
 ## 2b. Create your first admin login
 
 Choose **InkConnect → 3. Create admin account** in the spreadsheet.
@@ -99,6 +106,33 @@ const API_CONFIG = {
   GAS_URL: "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE",
 };
 ```
+
+### Optional registration fees and identity review
+
+After deploying the updated backend and running `setupSheets()`, use
+**Admin Dashboard → Site Settings → Registration and identity settings**
+to independently require or waive the access fee for clients and writers.
+The same section can require manual ID review for new accounts. Fee
+settings are saved in the Settings sheet and take effect immediately.
+
+Before enabling ID review:
+
+1. Run **InkConnect → 5. Prepare private ID storage** as the Apps Script
+   owner. Deploy the web app to execute as that same owner so anonymous
+   registration requests can save images to the private Drive folder.
+2. Restrict the spreadsheet, Apps Script project, and Drive folder to
+   authorized staff. The full ID number is stored in the Users sheet;
+   the front/back images are stored privately in Drive. Admins view images
+   through the authenticated Manage Users → View screen; do not make the
+   folder or image files public.
+3. Deploy the updated Apps Script version, run **setupSheets()**, then
+   set the admin toggle. Admin review is manual only; this feature does
+   not verify document authenticity, use OCR, or perform face matching.
+   Review your privacy notice, applicable law, and retention/deletion
+   process before collecting real identity documents.
+
+The browser-only demo mode deliberately rejects ID uploads. Do not collect
+real identity documents through localStorage or an unreviewed deployment.
 
 Reload the site — every page now reads and writes through your Google
 Sheet instead of the local demo database. No other frontend code needs

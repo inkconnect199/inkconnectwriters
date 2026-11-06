@@ -47,6 +47,7 @@ const SITE_CONFIG = {
   COMPANY_NAME: "InkConnect",
   REQUIRE_CLIENT_ACCESS_FEE: true,
   REQUIRE_WRITER_ACCESS_FEE: true,
+  REQUIRE_IDENTITY_VERIFICATION: true,
   REQUIRE_ADMIN_JOB_APPROVAL: true,
   REFERRAL_BONUS_KES: 100,
   REFERRAL_BONUS_USD: 1,
@@ -55,10 +56,27 @@ const SITE_CONFIG = {
 
 /** Whether this role must pay the one-time access fee. Mirrors
     roleNeedsAccessFee() in assets/js/api.js — keep both in sync. */
-function roleNeedsAccessFee(role) {
-  if (role === "client") return SITE_CONFIG.REQUIRE_CLIENT_ACCESS_FEE;
-  if (role === "writer") return SITE_CONFIG.REQUIRE_WRITER_ACCESS_FEE;
+function roleNeedsAccessFee(role, config) {
+  config = config || effectiveSiteConfig();
+  if (role === "client") return config.REQUIRE_CLIENT_ACCESS_FEE;
+  if (role === "writer") return config.REQUIRE_WRITER_ACCESS_FEE;
   return false;
+}
+
+function roleNeedsIdentityVerification(role, config) {
+  return role === "client" || role === "writer";
+}
+
+function effectiveSiteConfig() {
+  const overrides = {};
+  readRows(SHEET_NAMES.SETTINGS).forEach((row) => { overrides[row.key] = row.value; });
+  ["ACCESS_FEE_KES", "ACCESS_FEE_USD", "REFERRAL_BONUS_KES", "REFERRAL_BONUS_USD", "MAX_WITHDRAWAL_USD"].forEach((key) => {
+    if (overrides[key] !== undefined) overrides[key] = Number(overrides[key]);
+  });
+  ["REQUIRE_CLIENT_ACCESS_FEE", "REQUIRE_WRITER_ACCESS_FEE", "REQUIRE_IDENTITY_VERIFICATION"].forEach((key) => {
+    if (overrides[key] !== undefined) overrides[key] = overrides[key] === true || String(overrides[key]).toLowerCase() === "true";
+  });
+  return Object.assign({}, SITE_CONFIG, overrides, { REQUIRE_IDENTITY_VERIFICATION: true });
 }
 
 function doPost(e) {
@@ -120,6 +138,7 @@ const ADMIN_ACTIONS = [
   "adminSetUserStatus", "adminCreateAdmin", "adminPromoteToAdmin", "adminStats",
   "getAccessRequests", "approveAccessRequest", "rejectAccessRequest",
   "updateSiteSettings", "adminGetAllWallets",
+  "adminGetIdentityDocument", "adminReviewIdentity",
 ];
 
 function isPublicAction(action) { return PUBLIC_ACTIONS.indexOf(action) !== -1; }
@@ -131,6 +150,7 @@ function scopeRequestToActor(action, payload, session) {
     getNotifications: "userId", markNotificationsRead: "userId", getThreads: "userId",
     getReferrals: "userId", getReviews: "userId", submitAccessPayment: "userId",
     initializePaystackAccessPayment: "userId", verifyPaystackAccessPayment: "userId",
+    submitIdentityVerification: "userId",
   };
   if (selfIdFields[action]) payload[selfIdFields[action]] = session.id;
 
@@ -181,14 +201,22 @@ function validateActionAccess(action, payload, session) {
   if (roleRequirements[action] && roleRequirements[action].indexOf(session.role) === -1) {
     return "This action is not available for your account type.";
   }
-  if (session.role !== "admin" && roleNeedsAccessFee(session.role) && session.accessStatus !== "active") {
+  const registrationConfig = session.role === "admin" ? null : effectiveSiteConfig();
+  if (session.role !== "admin" && roleNeedsAccessFee(session.role, registrationConfig) && session.accessStatus !== "active") {
     const pendingAllowed = [
       "changePassword", "getUser", "updateProfile", "submitAccessPayment", "initializePaystackAccessPayment",
-      "verifyPaystackAccessPayment", "logout",
+      "verifyPaystackAccessPayment", "submitIdentityVerification", "logout",
     ];
     if (pendingAllowed.indexOf(action) === -1) {
       return "Complete the account access review before using this feature.";
     }
+  }
+  if (session.role !== "admin" && roleNeedsIdentityVerification(session.role, registrationConfig) && session.identityStatus !== "approved") {
+    const pendingAllowed = [
+      "changePassword", "getUser", "updateProfile", "submitIdentityVerification",
+      "submitAccessPayment", "initializePaystackAccessPayment", "verifyPaystackAccessPayment", "logout",
+    ];
+    if (pendingAllowed.indexOf(action) === -1) return "Complete identity verification before using this feature.";
   }
   if (session.role === "admin") return "";
 
@@ -303,6 +331,7 @@ function onOpen() {
     .addSeparator()
     .addItem("3. Create admin account", "runInkConnectSeedAdmin")
     .addItem("4. Authorize password reset email", "authorizePasswordResetEmail")
+    .addItem("5. Prepare private ID storage", "runInkConnectIdentityStorage")
     .addToUi();
 }
 
@@ -364,6 +393,17 @@ function runInkConnectSeedAdmin() {
     const details = error && error.stack ? error.stack : String(error);
     Logger.log("InkConnect admin setup failed:\n" + details);
     SpreadsheetApp.getUi().alert("InkConnect admin setup failed", details, SpreadsheetApp.getUi().ButtonSet.OK);
+    throw error;
+  }
+}
+
+function runInkConnectIdentityStorage() {
+  try {
+    showSetupResult("InkConnect identity storage", setupIdentityStorage());
+  } catch (error) {
+    const details = error && error.stack ? error.stack : String(error);
+    Logger.log("InkConnect identity storage setup failed:\n" + details);
+    SpreadsheetApp.getUi().alert("Identity storage setup failed", details, SpreadsheetApp.getUi().ButtonSet.OK);
     throw error;
   }
 }
@@ -570,6 +610,11 @@ function sanitizeUser(u) {
   const copy = Object.assign({}, u);
   delete copy.passwordHash;
   delete copy.sessionVersion;
+  delete copy.identityName;
+  delete copy.identityNumber;
+  delete copy.identityFrontFileId;
+  delete copy.identityBackFileId;
+  delete copy.identityConsentAt;
   // Same Sheets-numeric-coercion guard as asText() below, applied to every
   // field the frontend always treats as text (phone numbers typed without
   // a leading 0/+ are the most common case that gets silently turned into
@@ -602,6 +647,83 @@ function asText(v) {
   return v === null || v === undefined ? "" : String(v);
 }
 
+function saveIdentityDocuments(userId, identity) {
+  if (!identity || typeof identity !== "object" || identity.consent !== true) {
+    throw new Error("Identity-verification consent is required.");
+  }
+  const name = String(identity.name || "").trim();
+  const number = String(identity.number || "").trim();
+  const documentType = String(identity.documentType || "");
+  if (name.length < 2 || name.length > 120) throw new Error("Enter the full name printed on your ID.");
+  if (number.length < 4 || number.length > 40) throw new Error("Enter a valid ID or license number.");
+  if (/^[=+\-@]/.test(name) || /^[=+\-@]/.test(number)) throw new Error("ID details cannot begin with spreadsheet formula characters.");
+  if (["national_id", "drivers_license"].indexOf(documentType) === -1) throw new Error("Choose a valid ID document type.");
+
+  const frontFile = createPrivateIdentityFile(userId, "front", identity.front);
+  let backFile;
+  try {
+    backFile = createPrivateIdentityFile(userId, "back", identity.back);
+  } catch (error) {
+    frontFile.setTrashed(true);
+    throw error;
+  }
+  return {
+    identityStatus: "pending",
+    identityType: documentType,
+    identityName: name,
+    identityNumber: number,
+    identityFrontFileId: frontFile.getId(),
+    identityBackFileId: backFile.getId(),
+    identitySubmittedAt: nowMs(),
+    identityReviewedAt: "",
+    identityReviewNote: "",
+    identityConsentAt: nowMs(),
+  };
+}
+
+function createPrivateIdentityFile(userId, side, dataUrl) {
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl || ""));
+  if (!match || String(dataUrl).length > 900000) {
+    throw new Error("Each ID image must be a JPG, PNG, or WebP under the upload size limit.");
+  }
+
+  const folder = identityDocumentsFolder();
+  const mimeType = "image/" + match[1];
+  const blob = Utilities.newBlob(Utilities.base64Decode(match[2]), mimeType, "identity-" + userId + "-" + side);
+  const file = folder.createFile(blob);
+  try {
+    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.VIEW);
+  } catch (error) {
+    file.setTrashed(true);
+    throw error;
+  }
+  return file;
+}
+
+function identityDocumentsFolder() {
+  const properties = PropertiesService.getScriptProperties();
+  const folderId = properties.getProperty("IDENTITY_DOCUMENTS_FOLDER_ID");
+  const folder = folderId
+    ? DriveApp.getFolderById(folderId)
+    : DriveApp.createFolder("InkConnect Private Identity Documents");
+  if (!folderId) properties.setProperty("IDENTITY_DOCUMENTS_FOLDER_ID", folder.getId());
+  folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.VIEW);
+  return folder;
+}
+
+function setupIdentityStorage() {
+  const folder = identityDocumentsFolder();
+  const message = "Private identity-document folder is ready. Folder ID: " + folder.getId() +
+    ". Administrators view documents through authenticated dashboard actions; keep the folder private.";
+  Logger.log(message);
+  return message;
+}
+
+function trashIdentityFile(fileId) {
+  if (!fileId) return;
+  DriveApp.getFileById(String(fileId)).setTrashed(true);
+}
+
 /** Short, shareable referral code — base name + 4 random digits, retried
     until unique against the given user rows. */
 function generateReferralCode(users, base) {
@@ -620,7 +742,7 @@ function awardReferralBonus(referredUser) {
   if (already) return;
   const referrer = readRows(SHEET_NAMES.USERS).find((u) => u.id === referredUser.referredBy);
   if (!referrer) return;
-  const amount = SITE_CONFIG.REFERRAL_BONUS_USD;
+  const amount = effectiveSiteConfig().REFERRAL_BONUS_USD;
   const wallet = readRows(SHEET_NAMES.WALLET).find((w) => w.userId === referrer.id);
   const newBal = (wallet ? Number(wallet.balance) : 0) + amount;
   if (wallet) updateRowById(SHEET_NAMES.WALLET, "userId", referrer.id, { balance: newBal });
@@ -641,10 +763,16 @@ const Actions = {
     }
     const usersSheet = ss.getSheetByName(SHEET_NAMES.USERS);
     const userHeaders = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
-    if (userHeaders.indexOf("sessionVersion") === -1) {
-      return { ok: false, error: "The Users tab is missing the sessionVersion column. Run InkConnect setup in the spreadsheet." };
+    const requiredUserHeaders = ["sessionVersion", "identityStatus", "identityNumber", "identityFrontFileId", "identityBackFileId"];
+    const missingUserHeaders = requiredUserHeaders.filter((header) => userHeaders.indexOf(header) === -1);
+    if (missingUserHeaders.length) {
+      return { ok: false, error: "The Users tab is missing columns: " + missingUserHeaders.join(", ") + ". Run InkConnect setup in the spreadsheet." };
     }
-    return { ok: true, message: "Google Sheets backend is connected and all required tabs exist." };
+    return {
+      ok: true,
+      message: "Google Sheets backend is connected and all required tabs exist.",
+      features: { registrationFeeToggles: true, identityVerification: true },
+    };
   },
 
   register(p) {
@@ -661,20 +789,25 @@ const Actions = {
     let referrer = null;
     if (p.referralCode) referrer = users.find((u) => u.referralCode && String(u.referralCode).toLowerCase() === String(p.referralCode).trim().toLowerCase());
 
-    const user = {
-      id: uid("usr"), fullName: p.fullName, username: p.username, email: p.email, phone: p.phone,
+    const userId = uid("usr");
+    const registrationConfig = effectiveSiteConfig();
+    const identityFields = roleNeedsIdentityVerification(p.role, registrationConfig)
+      ? saveIdentityDocuments(userId, p.identityVerification)
+      : { identityStatus: "not_required" };
+    const user = Object.assign({
+      id: userId, fullName: p.fullName, username: p.username, email: p.email, phone: p.phone,
       country: p.country, role: p.role, passwordHash: p.passwordHash, profilePic: p.profilePic || "",
       bio: "", skills: "", rate: 0, rating: 0, completedJobs: 0, createdAt: nowMs(), verified: true, suspended: false,
-      accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active", accessRejectionReason: "", sessionVersion: 0,
+      accessStatus: roleNeedsAccessFee(p.role, registrationConfig) ? "unpaid" : "active", accessRejectionReason: "", sessionVersion: 0,
       organization: "", preferredBudget: "", experience: "", languages: "", education: "",
       certificates: "", availability: "Available", portfolio: "", onboardingComplete: false, onboardingStep: 1,
       referralCode: generateReferralCode(users, p.username || p.fullName), referredBy: referrer ? referrer.id : "",
-    };
+    }, identityFields);
     appendRow(SHEET_NAMES.USERS, user);
     appendRow(SHEET_NAMES.WALLET, { userId: user.id, balance: 0, escrow: 0 });
 
     // No approval gate for this role — active immediately, so award now.
-    if (user.accessStatus === "active" && user.referredBy) awardReferralBonus(user);
+    if (user.accessStatus === "active" && user.identityStatus !== "pending" && user.referredBy) awardReferralBonus(user);
 
     return { ok: true, user: sanitizeUser(user), token: createSessionToken(user) };
   },
@@ -689,13 +822,21 @@ const Actions = {
   },
 
   getWriters() {
-    const users = readRows(SHEET_NAMES.USERS).filter((u) => u.role === "writer");
+    const registrationConfig = effectiveSiteConfig();
+    const users = readRows(SHEET_NAMES.USERS).filter((u) =>
+      u.role === "writer" &&
+      (!roleNeedsAccessFee("writer", registrationConfig) || u.accessStatus === "active") &&
+      (!roleNeedsIdentityVerification("writer", registrationConfig) || u.identityStatus === "approved")
+    );
     return {
       ok: true,
       writers: users.map((user) => {
         const writer = deserializeSkills(sanitizeUser(user));
         delete writer.email;
         delete writer.phone;
+        delete writer.identityStatus;
+        delete writer.identityType;
+        delete writer.identityReviewNote;
         return writer;
       }),
     };
@@ -1053,8 +1194,79 @@ const Actions = {
     const referredCount = allUsers.filter((u) => u.referredBy === user.id).length;
     return {
       ok: true, user: sanitizeUser(deserializeSkills(user)), wallet, jobs, applications, accessHistory,
+      identity: {
+        status: user.identityStatus || "not_required",
+        documentType: user.identityType || "",
+        name: user.identityName || "",
+        number: user.identityNumber || "",
+        submittedAt: user.identitySubmittedAt || "",
+        reviewedAt: user.identityReviewedAt || "",
+        reviewNote: user.identityReviewNote || "",
+        hasFront: !!user.identityFrontFileId,
+        hasBack: !!user.identityBackFileId,
+      },
       referredByName: referredBy ? referredBy.fullName : null, referredCount,
     };
+  },
+
+  submitIdentityVerification(p) {
+    if (!roleNeedsIdentityVerification(p._actorRole)) {
+      return { ok: false, error: "Identity verification is not currently required." };
+    }
+    const user = readRows(SHEET_NAMES.USERS).find((row) => row.id === p._actorId);
+    if (!user) return { ok: false, error: "User not found." };
+    let fields;
+    try {
+      fields = saveIdentityDocuments(user.id, p.identityVerification);
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+    const previousFront = user.identityFrontFileId;
+    const previousBack = user.identityBackFileId;
+    if (!updateRowById(SHEET_NAMES.USERS, "id", user.id, fields)) {
+      trashIdentityFile(fields.identityFrontFileId);
+      trashIdentityFile(fields.identityBackFileId);
+      return { ok: false, error: "Could not save your identity submission. Please try again." };
+    }
+    if (previousFront) trashIdentityFile(previousFront);
+    if (previousBack) trashIdentityFile(previousBack);
+    readRows(SHEET_NAMES.USERS).filter((row) => row.role === "admin").forEach((admin) => {
+      notify(admin.id, "account", user.fullName + " submitted identity documents for review.");
+    });
+    const updatedUser = readRows(SHEET_NAMES.USERS).find((row) => row.id === user.id);
+    return { ok: true, user: sanitizeUser(updatedUser) };
+  },
+
+  adminGetIdentityDocument(p) {
+    const user = readRows(SHEET_NAMES.USERS).find((row) => row.id === p.userId);
+    if (!user) return { ok: false, error: "User not found." };
+    const fileId = p.side === "front" ? user.identityFrontFileId : p.side === "back" ? user.identityBackFileId : "";
+    if (!fileId) return { ok: false, error: "That identity document image is not available." };
+    const blob = DriveApp.getFileById(String(fileId)).getBlob();
+    return { ok: true, dataUrl: "data:" + blob.getContentType() + ";base64," + Utilities.base64Encode(blob.getBytes()) };
+  },
+
+  adminReviewIdentity(p) {
+    if (p.status !== "approved" && p.status !== "rejected") {
+      return { ok: false, error: "Choose approve or reject for this identity submission." };
+    }
+    const user = readRows(SHEET_NAMES.USERS).find((row) => row.id === p.userId);
+    if (!user) return { ok: false, error: "User not found." };
+    if (!user.identityFrontFileId || !user.identityBackFileId) {
+      return { ok: false, error: "This account has no complete identity submission to review." };
+    }
+    if (user.identityStatus === "approved") return { ok: false, error: "This identity submission has already been approved." };
+    const note = String(p.reviewNote || "").trim().slice(0, 500);
+    updateRowById(SHEET_NAMES.USERS, "id", user.id, {
+      identityStatus: p.status,
+      identityReviewedAt: nowMs(),
+      identityReviewNote: note,
+    });
+    if (p.status === "approved" && user.accessStatus === "active") awardReferralBonus(user);
+    notify(user.id, "account", p.status === "approved"
+      ? "Your identity verification was approved."
+      : "Your identity verification needs attention. Sign in to submit updated documents. " + (note ? "Review note: " + note : ""));
+    return { ok: true };
   },
 
   adminSetUserStatus(p) { updateRowById(SHEET_NAMES.USERS, "id", p.id, { suspended: !!p.suspended }); return { ok: true }; },
@@ -1207,9 +1419,11 @@ const Actions = {
           .forEach((other) => updateRowById(SHEET_NAMES.ACCESS_REQUESTS, "id", other.id, {
             status: "superseded", reason: "Account activated after verified Paystack payment.",
           }));
-        notify(currentUser.id, "payment", "Your access fee was verified by Paystack — your dashboard is unlocked.");
+        notify(currentUser.id, "payment", currentUser.identityStatus === "pending"
+          ? "Your access fee was verified by Paystack."
+          : "Your access fee was verified by Paystack — your dashboard is unlocked.");
       }
-      awardReferralBonus(currentUser);
+      if (!roleNeedsIdentityVerification(currentUser.role) || currentUser.identityStatus === "approved") awardReferralBonus(currentUser);
       const updatedUser = readRows(SHEET_NAMES.USERS).find((u) => u.id === request.userId);
       return { ok: true, user: sanitizeUser(updatedUser), reference: reference };
     } finally {
@@ -1239,9 +1453,11 @@ const Actions = {
     if (!req) return { ok: false, error: "Request not found." };
     updateRowById(SHEET_NAMES.ACCESS_REQUESTS, "id", req.id, { status: "approved", reviewedAt: nowMs() });
     updateRowById(SHEET_NAMES.USERS, "id", req.userId, { accessStatus: "active", accessRejectionReason: "" });
-    notify(req.userId, "payment", "Your access payment was approved — your dashboard is unlocked.");
     const user = readRows(SHEET_NAMES.USERS).find((u) => u.id === req.userId);
-    if (user) awardReferralBonus(user);
+    notify(req.userId, "payment", user && roleNeedsIdentityVerification(user.role) && user.identityStatus !== "approved"
+      ? "Your access payment was approved."
+      : "Your access payment was approved — your dashboard is unlocked.");
+    if (user && (!roleNeedsIdentityVerification(user.role) || user.identityStatus === "approved")) awardReferralBonus(user);
     return { ok: true };
   },
 
@@ -1260,12 +1476,7 @@ const Actions = {
       Settings sheet as key/value rows) layered on top of the SITE_CONFIG
       code defaults. Anyone can read these; only admin actions write. */
   getSiteSettings() {
-    const rows = readRows(SHEET_NAMES.SETTINGS);
-    const overrides = {};
-    rows.forEach((r) => { overrides[r.key] = r.value; });
-    // Numeric fields come back as strings from the sheet — coerce them.
-    ["ACCESS_FEE_KES", "ACCESS_FEE_USD", "REFERRAL_BONUS_KES", "REFERRAL_BONUS_USD", "MAX_WITHDRAWAL_USD"].forEach((k) => { if (overrides[k] !== undefined) overrides[k] = Number(overrides[k]); });
-    return { ok: true, settings: Object.assign({}, SITE_CONFIG, overrides) };
+    return { ok: true, settings: effectiveSiteConfig() };
   },
 
   /** Admin: override the access fee amount and/or company M-Pesa number /
@@ -1354,7 +1565,7 @@ function notify(userId, type, text) {
 function setupSheets() {
   const ss = getDatabaseSpreadsheet();
   const schema = {
-    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy", "sessionVersion", "experience", "languages", "education", "certificates", "availability", "portfolio", "organization", "preferredBudget", "onboardingComplete", "onboardingStep"],
+    Users: ["id", "fullName", "username", "email", "phone", "country", "role", "passwordHash", "profilePic", "bio", "skills", "rate", "rating", "completedJobs", "createdAt", "verified", "suspended", "accessStatus", "accessRejectionReason", "referralCode", "referredBy", "sessionVersion", "experience", "languages", "education", "certificates", "availability", "portfolio", "organization", "preferredBudget", "onboardingComplete", "onboardingStep", "identityStatus", "identityType", "identityName", "identityNumber", "identityFrontFileId", "identityBackFileId", "identitySubmittedAt", "identityReviewedAt", "identityReviewNote", "identityConsentAt"],
     Jobs: ["id", "clientId", "clientName", "title", "category", "budget", "description", "status", "createdAt", "deadline", "submissionFile", "submissionNote", "rejectionReason"],
     Applications: ["id", "jobId", "writerId", "writerName", "coverLetter", "proposedRate", "status", "createdAt"],
     Messages: ["id", "threadId", "fromId", "toId", "text", "createdAt", "read"],
@@ -1396,6 +1607,13 @@ function setupSheets() {
     }
   });
 
+  const usersSheet = ss.getSheetByName(SHEET_NAMES.USERS);
+  const usersHeaders = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+  ["identityName", "identityNumber"].forEach((header) => {
+    const column = usersHeaders.indexOf(header) + 1;
+    if (column > 0) usersSheet.getRange(1, column, usersSheet.getMaxRows(), 1).setNumberFormat("@");
+  });
+
   SpreadsheetApp.flush();
   Logger.log(report.join("\n"));
   Logger.log("\nDone. If you don't have an admin login yet, run seedAdminAccount() next.");
@@ -1430,7 +1648,7 @@ function diagnoseSetup() {
     }
 
     const usersHeaders = ss.getSheetByName("Users") ? ss.getSheetByName("Users").getRange(1, 1, 1, ss.getSheetByName("Users").getLastColumn()).getValues()[0] : [];
-    const criticalCols = ["accessStatus", "referralCode", "referredBy", "passwordHash", "sessionVersion"];
+    const criticalCols = ["accessStatus", "referralCode", "referredBy", "passwordHash", "sessionVersion", "identityStatus", "identityNumber", "identityFrontFileId", "identityBackFileId"];
     const missingCols = criticalCols.filter((c) => usersHeaders.indexOf(c) === -1);
     if (missingCols.length) {
       lines.push("\nUsers sheet is missing column(s): " + missingCols.join(", ") + " — run setupSheets() again to backfill them (this is the #1 cause of \"can't approve\" issues).");

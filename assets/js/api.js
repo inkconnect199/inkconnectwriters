@@ -46,9 +46,8 @@ const SITE_CONFIG = {
   REQUIRE_CLIENT_ACCESS_FEE: true,
   // Writers pay the same one-time access fee before their dashboard unlocks too.
   REQUIRE_WRITER_ACCESS_FEE: true,
-  // Identity verification is opt-in. When enabled, users submit both sides
-  // of a government ID for manual review before using the marketplace.
-  REQUIRE_IDENTITY_VERIFICATION: false,
+  // All new client and writer accounts require government-ID verification.
+  REQUIRE_IDENTITY_VERIFICATION: true,
   // Set to false to let clients post jobs directly without admin approval.
   REQUIRE_ADMIN_JOB_APPROVAL: true,
   // Referral program: existing users earn this bonus when someone they
@@ -78,8 +77,7 @@ function roleNeedsAccessFee(role) {
 }
 
 function roleNeedsIdentityVerification(role) {
-  const config = typeof _siteSettingsCache !== "undefined" && _siteSettingsCache ? _siteSettingsCache : SITE_CONFIG;
-  return (role === "client" || role === "writer") && !!config.REQUIRE_IDENTITY_VERIFICATION;
+  return role === "client" || role === "writer";
 }
 
 /* ---------------- Local demo database ---------------- */
@@ -874,6 +872,8 @@ let _siteSettingsCache = null;
 async function getEffectiveSiteConfig(forceRefresh = false) {
   if (_siteSettingsCache && !forceRefresh) return _siteSettingsCache;
   const res = await API.getSiteSettings();
-  _siteSettingsCache = res.ok ? res.settings : SITE_CONFIG;
+  _siteSettingsCache = res.ok
+    ? Object.assign({}, res.settings, { REQUIRE_IDENTITY_VERIFICATION: true })
+    : SITE_CONFIG;
   return _siteSettingsCache;
 }

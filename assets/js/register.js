@@ -98,7 +98,6 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("follow-us-link").href = effectiveConfig.COMPANY_SOCIAL_LINK;
       document.getElementById("follow-us-note").style.display = "block";
     }
-    identitySection.style.display = effectiveConfig.REQUIRE_IDENTITY_VERIFICATION ? "block" : "none";
     const selectedRole = document.querySelector(".role-option.selected");
     if (selectedRole) selectRole(selectedRole);
   })();
@@ -113,6 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     opt.classList.add("selected");
     roleInput.value = opt.dataset.role;
     renderRegistrationProfileFields(opt.dataset.role);
+    identitySection.style.display = roleNeedsIdentityVerification(opt.dataset.role) ? "block" : "none";
     // Both clients and writers pay the same one-time access fee (each
     // toggle independently controllable in SITE_CONFIG).
     const showPayment = roleNeedsAccessFee(opt.dataset.role);
@@ -304,7 +304,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Validate manual payment details only when Paystack checkout isn't selected.
     const needsPayment = roleNeedsAccessFee(roleInput.value);
-    const needsIdentityVerification = !!effectiveConfig.REQUIRE_IDENTITY_VERIFICATION;
+    const needsIdentityVerification = roleNeedsIdentityVerification(roleInput.value);
     let paymentMethod = null, paymentData = null, txMessage = "";
     if (needsPayment) {
       paymentMethod = PaymentMethods.getSelected(document.getElementById("reg-payment-methods"));
