@@ -42,6 +42,7 @@ const Auth = {
       fullName: form.fullName, username: form.username, email: form.email,
       phone: form.phone, country: form.country, role: form.role,
       passwordHash, profilePic: form.profilePic || "", referralCode: form.referralCode || "",
+      identityVerification: form.identityVerification || null,
     });
     if (res.ok) Auth.setSession(res.user, res.token || "local-" + res.user.id, remember);
     return res;

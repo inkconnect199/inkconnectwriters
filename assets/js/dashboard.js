@@ -26,9 +26,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // dashboard initializes. If not yet approved, send them to the
   // dedicated review page instead of rendering the dashboard.
   if (page === "client-dashboard" || page === "writer-dashboard") {
+    await getEffectiveSiteConfig(true);
     const fresh = await API.getUser({ id: CURRENT_SESSION.user.id });
     const user = fresh.ok ? fresh.user : CURRENT_SESSION.user;
     if (fresh.ok) { Auth.setSession(user, CURRENT_SESSION.token, true); CURRENT_SESSION.user = user; }
+    if (roleNeedsIdentityVerification(role) && user.identityStatus !== "approved") {
+      window.location.href = "registration-pending.html";
+      return;
+    }
     if (Auth.needsOnboarding(user)) {
       window.location.href = "onboarding.html";
       return;
@@ -228,7 +233,7 @@ function statusBadge(status) {
     open: ["blue", "Open"], in_progress: ["amber", "In progress"], submitted: ["amber", "Submitted"],
     completed: ["green", "Completed"], pending: ["amber", "Pending"], accepted: ["green", "Accepted"],
     rejected: ["red", "Rejected"], pending_review: ["amber", "Awaiting admin approval"],
-    unpaid: ["red", "Unpaid"], active: ["green", "Active"], approved: ["green", "Approved"],
+    unpaid: ["red", "Unpaid"],     active: ["green", "Active"], approved: ["green", "Approved"], not_required: ["blue", "Not required"],
   };
   const [cls, label] = map[status] || ["blue", status];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -247,7 +252,7 @@ async function renderNotifications(container) {
     </div>`).join("")}</div>`;
   API.markNotificationsRead({ userId: CURRENT_SESSION.user.id });
 }
-function labelForNotifType(t) { return { job: "Job update", application: "Application", payment: "Payment", message: "Message", review: "Review", announcement: "📢 Announcement" }[t] || "Update"; }
+function labelForNotifType(t) { return { job: "Job update", application: "Application", payment: "Payment", message: "Message", review: "Review", account: "Account update", announcement: "📢 Announcement" }[t] || "Update"; }
 
 let chatMessagePollTimer = null;
 let chatThreadListPollTimer = null;
@@ -921,10 +926,11 @@ const AdminDash = {
   async renderUsers() {
     const el = document.getElementById("admin-users-list");
     const res = await API.adminGetUsers();
-    el.innerHTML = `<table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Country</th><th>Access</th><th>Status</th><th></th></tr></thead><tbody>${res.users.map((u) => `
+    el.innerHTML = `<table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Country</th><th>Access</th><th>Identity</th><th>Status</th><th></th></tr></thead><tbody>${res.users.map((u) => `
       <tr><td><div class="flex gap-2">${adminProfileAvatar(u)}${escapeHtml(u.fullName)}</div></td>
       <td style="text-transform:capitalize;">${u.role}</td><td>${escapeHtml(u.country || "—")}</td>
-      <td>${u.role === "client" ? statusBadge(u.accessStatus || "unpaid") : '<span class="muted">—</span>'}</td>
+      <td>${u.role !== "admin" ? statusBadge(u.accessStatus || "unpaid") : '<span class="muted">—</span>'}</td>
+      <td>${statusBadge(u.identityStatus || "not_required")}</td>
       <td>${u.suspended ? '<span class="badge red">Suspended</span>' : '<span class="badge green">Active</span>'}</td>
       <td class="flex gap-2">
         <button class="btn btn-outline btn-sm" data-view-user="${u.id}">View</button>
@@ -943,6 +949,7 @@ const AdminDash = {
     const res = await API.adminGetUserDetail({ id });
     if (!res.ok) return toast(res.error, "error");
     const u = res.user;
+    const identity = res.identity || { status: "not_required" };
     const content = document.getElementById("user-detail-content");
     content.innerHTML = `
       <div class="flex gap-2 mb-3">${adminProfileAvatar(u, "", "width:56px;height:56px;font-size:1.2rem;")}
@@ -954,17 +961,66 @@ const AdminDash = {
         <div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Wallet balance</div><div>${money(res.wallet.balance)}</div></div>
         ${u.role === "writer" ? `<div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Rating</div><div>★ ${(u.rating||0).toFixed(1)} (${u.completedJobs||0} jobs)</div></div>
         <div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Rate</div><div>${money(u.rate||0)}/hr</div></div>` : ""}
-        ${u.role === "client" ? `<div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Access status</div><div>${statusBadge(u.accessStatus || "unpaid")}</div></div>
-        <div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Jobs posted</div><div>${res.jobs.length}</div></div>` : ""}
+        ${u.role !== "admin" ? `<div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Access status</div><div>${statusBadge(u.accessStatus || "unpaid")}</div></div>` : ""}
+        ${u.role === "client" ? `<div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Jobs posted</div><div>${res.jobs.length}</div></div>` : ""}
         <div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Referral code</div><div style="font-family:var(--font-mono);font-size:.85rem;">${escapeHtml(u.referralCode || "—")}</div></div>
         <div class="glass" style="padding:12px;"><div class="muted" style="font-size:.72rem;">Referred by</div><div>${res.referredByName ? escapeHtml(res.referredByName) : "—"}</div></div>
       </div>
       ${res.referredCount ? `<p class="muted mb-3" style="font-size:.82rem;">🎁 Has referred ${res.referredCount} ${res.referredCount === 1 ? "person" : "people"} to the platform.</p>` : ""}
+      ${identity.status !== "not_required" ? `
+        <div class="glass mb-3" style="padding:14px;">
+          <div class="flex-between"><h4 class="h-3" style="font-size:1rem;">Identity verification</h4>${statusBadge(identity.status || "pending")}</div>
+          <div class="grid mt-2" style="grid-template-columns:1fr 1fr;gap:8px;font-size:.84rem;">
+            <div><span class="muted">Name on document</span><br>${escapeHtml(identity.name || "—")}</div>
+            <div><span class="muted">Document type</span><br>${identity.documentType === "drivers_license" ? "Driver's license" : identity.documentType === "national_id" ? "National ID" : "—"}</div>
+            <div><span class="muted">Document number</span><br>${escapeHtml(identity.number || "—")}</div>
+            <div><span class="muted">Submitted</span><br>${identity.submittedAt ? escapeHtml(new Date(identity.submittedAt).toLocaleString()) : "—"}</div>
+          </div>
+          ${identity.reviewNote ? `<p class="method-note mt-2">Review note: ${escapeHtml(identity.reviewNote)}</p>` : ""}
+          ${identity.hasFront && identity.hasBack ? `
+            <div class="flex gap-2 mt-3">
+              <button type="button" class="btn btn-outline btn-sm" data-identity-image="front">View front</button>
+              <button type="button" class="btn btn-outline btn-sm" data-identity-image="back">View back</button>
+            </div>
+            <div class="grid mt-2" style="grid-template-columns:1fr 1fr;gap:8px;">
+              <div data-identity-preview="front"></div><div data-identity-preview="back"></div>
+            </div>
+            ${identity.status !== "approved" ? `<div class="flex gap-2 mt-3">
+              <button type="button" class="btn btn-primary btn-sm" data-review-identity="approved">Approve ID</button>
+              <button type="button" class="btn btn-danger btn-sm" data-review-identity="rejected">Request new ID</button>
+            </div>` : ""}
+          ` : `<p class="method-note mt-2">No complete ID document is available for review.</p>`}
+        </div>` : ""}
       ${u.bio ? `<p class="body-md mb-3">${escapeHtml(u.bio)}</p>` : ""}
       ${u.skills && u.skills.length ? `<div class="tag-row mb-3">${u.skills.map((s) => `<span class="tag">${escapeHtml(s)}</span>`).join("")}</div>` : ""}
       ${u.role === "client" && res.jobs.length ? `<h4 class="h-3 mb-2" style="font-size:1rem;">Job history</h4>${res.jobs.slice(0,5).map((j) => `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--glass-border);"><span style="font-size:.85rem;">${escapeHtml(j.title)}</span>${statusBadge(j.status)}</div>`).join("")}` : ""}
       ${u.role === "writer" && res.applications.length ? `<h4 class="h-3 mb-2" style="font-size:1rem;">Recent applications</h4>${res.applications.slice(0,5).map((a) => `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--glass-border);"><span style="font-size:.85rem;">${money(a.proposedRate)}</span>${statusBadge(a.status)}</div>`).join("")}` : ""}
     `;
+    content.querySelectorAll("[data-identity-image]").forEach((button) => button.addEventListener("click", async () => {
+      button.disabled = true;
+      const image = await API.adminGetIdentityDocument({ userId: id, side: button.dataset.identityImage });
+      button.disabled = false;
+      if (!image.ok) return toast(image.error, "error");
+      if (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl)) return toast("The backend returned an invalid identity image.", "error");
+      const preview = content.querySelector(`[data-identity-preview="${button.dataset.identityImage}"]`);
+      preview.replaceChildren();
+      const img = document.createElement("img");
+      img.src = image.dataUrl;
+      img.alt = `ID document ${button.dataset.identityImage}`;
+      img.style.cssText = "width:100%;height:auto;border-radius:10px;border:1px solid var(--glass-border);";
+      preview.appendChild(img);
+    }));
+    content.querySelectorAll("[data-review-identity]").forEach((button) => button.addEventListener("click", async () => {
+      const status = button.dataset.reviewIdentity;
+      const reviewNote = status === "rejected" ? window.prompt("Tell the user what needs to be corrected before resubmitting:") : "";
+      if (reviewNote === null) return;
+      button.disabled = true;
+      const result = await API.adminReviewIdentity({ userId: id, status, reviewNote });
+      if (!result.ok) { button.disabled = false; return toast(result.error, "error"); }
+      toast(status === "approved" ? "Identity approved." : "User asked to submit a new ID.", "success");
+      this.renderUsers();
+      this.viewUser(id);
+    }));
     openModal("user-detail-modal");
   },
 

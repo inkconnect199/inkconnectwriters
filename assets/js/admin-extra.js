@@ -30,6 +30,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (paymentForm) {
     document.querySelector('[data-section-link="site-settings"]')?.addEventListener("click", async () => {
       const c = await getEffectiveSiteConfig(true);
+      paymentForm.REQUIRE_CLIENT_ACCESS_FEE.checked = !!c.REQUIRE_CLIENT_ACCESS_FEE;
+      paymentForm.REQUIRE_WRITER_ACCESS_FEE.checked = !!c.REQUIRE_WRITER_ACCESS_FEE;
+      paymentForm.REQUIRE_IDENTITY_VERIFICATION.checked = !!c.REQUIRE_IDENTITY_VERIFICATION;
       paymentForm.ACCESS_FEE_KES.value = c.ACCESS_FEE_KES;
       paymentForm.ACCESS_FEE_USD.value = c.ACCESS_FEE_USD;
       paymentForm.COMPANY_MPESA_NUMBER.value = c.COMPANY_MPESA_NUMBER;
@@ -50,6 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
     paymentForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const updates = {
+        REQUIRE_CLIENT_ACCESS_FEE: paymentForm.REQUIRE_CLIENT_ACCESS_FEE.checked,
+        REQUIRE_WRITER_ACCESS_FEE: paymentForm.REQUIRE_WRITER_ACCESS_FEE.checked,
+        REQUIRE_IDENTITY_VERIFICATION: paymentForm.REQUIRE_IDENTITY_VERIFICATION.checked,
         ACCESS_FEE_KES: Number(paymentForm.ACCESS_FEE_KES.value),
         ACCESS_FEE_USD: Number(paymentForm.ACCESS_FEE_USD.value),
         COMPANY_MPESA_NUMBER: paymentForm.COMPANY_MPESA_NUMBER.value.trim(),
@@ -66,6 +72,22 @@ document.addEventListener("DOMContentLoaded", () => {
         SIGNUP_POPUP_ACCENT: paymentForm.SIGNUP_POPUP_ACCENT.value,
         COMPANY_SOCIAL_LINK: paymentForm.COMPANY_SOCIAL_LINK.value.trim(),
       };
+      if (updates.REQUIRE_IDENTITY_VERIFICATION && !API_CONFIG.GAS_URL) {
+        return toast("Identity verification requires the deployed Apps Script backend so ID documents are not stored in this browser demo.", "error");
+      }
+      const currentConfig = await getEffectiveSiteConfig(true);
+      const registrationRulesChanged =
+        updates.REQUIRE_CLIENT_ACCESS_FEE !== !!currentConfig.REQUIRE_CLIENT_ACCESS_FEE ||
+        updates.REQUIRE_WRITER_ACCESS_FEE !== !!currentConfig.REQUIRE_WRITER_ACCESS_FEE ||
+        updates.REQUIRE_IDENTITY_VERIFICATION !== !!currentConfig.REQUIRE_IDENTITY_VERIFICATION;
+      if (registrationRulesChanged && API_CONFIG.GAS_URL) {
+        const health = await API.healthCheck();
+        if (!health.ok) return toast(health.error, "error");
+        if (!health.features || health.features.registrationFeeToggles !== true ||
+            (updates.REQUIRE_IDENTITY_VERIFICATION && health.features.identityVerification !== true)) {
+          return toast("Deploy the updated Apps Script backend and run setupSheets() before changing registration requirements.", "error");
+        }
+      }
       if (!Validate.email(updates.COMPANY_PAYPAL_EMAIL)) return toast("Enter a valid PayPal email.", "error");
       if (updates.COMMUNITY_WHATSAPP_LINK && !Validate.httpsUrl(updates.COMMUNITY_WHATSAPP_LINK)) return toast("Enter a valid HTTPS community invite link.", "error");
       if (updates.COMMUNITY_FACEBOOK_LINK && !Validate.httpsUrl(updates.COMMUNITY_FACEBOOK_LINK)) return toast("Enter a valid HTTPS community link.", "error");

@@ -30,7 +30,7 @@
     <span class="eyebrow">Your information</span>
     <h1 class="h-1 mt-1">Privacy Policy</h1>
     <p class="body-lg mt-2">This page explains what information InkConnect may handle and how it is used.</p>
-    <p class="muted mt-2">Last updated: November 4, 2026</p>
+    <p class="muted mt-2">Last updated: November 6, 2026</p>
   </div>
   <section class="section" style="padding-top:0;">
     <div class="container grid" style="max-width:860px;gap:var(--space-3);">
@@ -38,15 +38,17 @@
         <h2 class="h-3">Information we handle</h2>
         <p class="body-md mt-2">Depending on how you use InkConnect, information may include your name, username, email address, phone number, country, account role, profile details and photo, referral information, and messages you send us. Marketplace activity can include job posts, applications, messages between users, reviews, and submitted work.</p>
         <p class="body-md mt-2">Payment activity may include transaction references, amounts, status, and payment channel. Payment providers may collect and process payment details directly under their own privacy terms.</p>
+        <p class="body-md mt-2">If identity verification is enabled, we collect the name and number on your national ID or driver's license, plus images of the front and back. These documents are stored separately from your public profile. Images are kept in a private Google Drive folder controlled by the service owner and retrieved for administrators through authenticated review actions; authorized storage administrators may also have direct access. Do not submit a document unless you consent to this use.</p>
       </article>
       <article class="glass glass-card">
         <h2 class="h-3">How we use information</h2>
         <p class="body-md mt-2">We use information to operate accounts and marketplace features, connect clients and writers, process and record payments, respond to support requests, prevent misuse, and maintain the service.</p>
+        <p class="body-md mt-2">Identity documents are reviewed manually by an administrator. InkConnect does not use this feature for automated document authenticity checks, facial recognition, or biometric matching. The current app does not automatically delete ID records, so the service operator must define and apply a retention and deletion schedule before collecting real documents.</p>
         <p class="body-md mt-2">Some profile and marketplace information is visible to other users so they can evaluate profiles, jobs, applications, and reviews. Please avoid including sensitive personal information in public profile fields or messages.</p>
       </article>
       <article class="glass glass-card">
         <h2 class="h-3">Storage and service providers</h2>
-        <p class="body-md mt-2">The current project configuration uses a browser-based demo database when the live backend URL is not configured. In that mode, demo records and session information are stored in your browser. A deployed version can send information to the InkConnect backend and its configured storage, payment, and infrastructure providers. Those providers process information under their own terms.</p>
+        <p class="body-md mt-2">The current project configuration uses a browser-based demo database when the live backend URL is not configured. In that mode, demo records and session information are stored in your browser. Identity documents must not be submitted in demo mode. A deployed version stores ID details in its Google Sheet and document images in a private Google Drive folder, accessible through authenticated administrator actions. The Sheet, Drive folder, and Apps Script project must be restricted to authorized personnel. Other configured storage, payment, and infrastructure providers process information under their own terms.</p>
         <p class="body-md mt-2">The site also loads fonts from Google Fonts. Your browser may contact Google to retrieve those font files.</p>
       </article>
       <article class="glass glass-card" id="cookies">

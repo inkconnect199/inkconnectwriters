@@ -58,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const presetRole = params.get("role");
   const roleInput = document.getElementById("role-input");
   const paymentSection = document.getElementById("client-payment-section");
+  const identitySection = document.getElementById("identity-verification-section");
   const profileFields = document.getElementById("registration-profile-fields");
   const paystackOption = document.querySelector('#reg-payment-methods [data-method="paystack"]');
   if (!API_CONFIG.GAS_URL && paystackOption) paystackOption.style.display = "none";
@@ -97,6 +98,9 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("follow-us-link").href = effectiveConfig.COMPANY_SOCIAL_LINK;
       document.getElementById("follow-us-note").style.display = "block";
     }
+    identitySection.style.display = effectiveConfig.REQUIRE_IDENTITY_VERIFICATION ? "block" : "none";
+    const selectedRole = document.querySelector(".role-option.selected");
+    if (selectedRole) selectRole(selectedRole);
   })();
   PaymentMethods.wire(document.getElementById("reg-payment-methods"));
 
@@ -267,6 +271,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("register-form");
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    effectiveConfig = await getEffectiveSiteConfig();
 
     if (!roleInput.value) { toast("Please choose whether you're a client or a writer.", "error"); return; }
     if (!validateRegistrationQuiz()) {
@@ -299,6 +304,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Validate manual payment details only when Paystack checkout isn't selected.
     const needsPayment = roleNeedsAccessFee(roleInput.value);
+    const needsIdentityVerification = !!effectiveConfig.REQUIRE_IDENTITY_VERIFICATION;
     let paymentMethod = null, paymentData = null, txMessage = "";
     if (needsPayment) {
       paymentMethod = PaymentMethods.getSelected(document.getElementById("reg-payment-methods"));
@@ -314,6 +320,20 @@ document.addEventListener("DOMContentLoaded", () => {
         else Validate.clearError(msgField);
       }
     }
+    let identityVerification = null;
+    if (needsIdentityVerification) {
+      const health = await API.healthCheck();
+      if (!health.ok || !health.features || health.features.identityVerification !== true) {
+        toast(health.error || "Identity verification is not ready. Ask the administrator to deploy the updated backend and run setupSheets().", "error");
+        return;
+      }
+      try {
+        identityVerification = await IdentityVerification.collect(form, true);
+      } catch (error) {
+        toast(error.message, "error");
+        valid = false;
+      }
+    }
     if (!valid) return;
 
     const submitBtn = form.querySelector("button[type=submit]");
@@ -323,6 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
       phone: normalizePhone(form.phone.value, countrySelect.selectedOptions[0]?.dataset.dialCode), country: form.country.value, role: roleInput.value,
       password: form.password.value, profilePic: profilePicData,
       referralCode: document.getElementById("referralCode").value.trim(),
+      identityVerification,
     });
 
     let profileSaveFailed = false;
@@ -348,13 +369,13 @@ document.addEventListener("DOMContentLoaded", () => {
         Auth.setSession(res.user, Auth.getSession().token, true);
         submitBtn.disabled = false;
         toast(profileSaveFailed ? "Account created, but profile details did not save. You can add them during onboarding." : "Payment verified — your account is active.", profileSaveFailed ? "error" : "success");
-        setTimeout(() => { window.location.href = "onboarding.html"; }, 700);
+        setTimeout(() => { window.location.href = needsIdentityVerification ? "registration-pending.html" : "onboarding.html"; }, 700);
         return;
       }
       Auth.setSession(res.user, Auth.getSession().token, true);
       toast(profileSaveFailed ? `Account created, but profile details could not be saved. Finish them during onboarding. ${payment.error}` : payment.error, "error");
       submitBtn.disabled = false;
-      setTimeout(() => { window.location.href = "onboarding.html"; }, 900);
+      setTimeout(() => { window.location.href = needsIdentityVerification ? "registration-pending.html" : "onboarding.html"; }, 900);
       return;
     }
 
@@ -374,8 +395,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (res.ok) {
       const currentSession = Auth.getSession();
       Auth.setSession(res.user, currentSession ? currentSession.token : "local-" + res.user.id, true);
-      toast(profileSaveFailed ? `Account created, but profile details could not be saved (${profileSaveError}). Finish them during onboarding.` : needsPayment ? "Account created — payment submitted for admin review." : "Account created! Redirecting to your dashboard...", profileSaveFailed ? "error" : "success");
-      setTimeout(() => (window.location.href = "onboarding.html"), 700);
+      toast(profileSaveFailed ? `Account created, but profile details could not be saved (${profileSaveError}). Finish them during onboarding.` : needsPayment ? "Account created — payment submitted for admin review." : needsIdentityVerification ? "Account created — your identity documents are pending admin review." : "Account created! Redirecting to your dashboard...", profileSaveFailed ? "error" : "success");
+      setTimeout(() => (window.location.href = needsIdentityVerification || needsPayment ? "registration-pending.html" : "onboarding.html"), 700);
     } else {
       toast(res.error, "error");
     }

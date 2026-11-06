@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const content = document.getElementById("review-content");
   content.innerHTML = `<div class="glass form-card text-center"><div class="spinner" style="margin:0 auto;"></div></div>`;
 
+  await getEffectiveSiteConfig(true);
   const fresh = await API.getUser({ id: session.user.id });
   const user = fresh.ok ? fresh.user : session.user;
   if (fresh.ok) { Auth.setSession(fresh.user, session.token, true); }
@@ -34,6 +35,10 @@ async function render(user) {
   const status = user.accessStatus || "unpaid";
   const destination = DASHBOARD_BY_ROLE[user.role] || "index.html";
 
+  if (roleNeedsIdentityVerification(user.role) && user.identityStatus !== "approved") {
+    if (user.identityStatus === "pending") return renderIdentityPending(content, user);
+    return renderIdentityForm(content, user);
+  }
   if (status === "active" || !roleNeedsAccessFee(user.role)) {
     window.location.href = destination;
     return;
@@ -41,6 +46,88 @@ async function render(user) {
   if (status === "pending") return renderPending(content, user);
   if (status === "rejected") return renderRejected(content, user);
   return renderPaymentForm(content, user);
+}
+
+async function renderIdentityForm(content, user) {
+  content.innerHTML = `
+    <div class="glass form-card form-wide" style="max-width:560px;">
+      <div class="text-center mb-4">
+        <span class="eyebrow">Identity verification</span>
+        <h2 class="h-2 mt-1">${user.identityStatus === "rejected" ? "Submit a new ID" : "Verify your identity"}</h2>
+        <p class="body-md mt-2">${user.identityStatus === "rejected" ? "Your last submission needs correction. Upload a clear image of both sides of your government-issued ID." : "Upload a government-issued national ID or driver's license. An administrator will review it manually."}</p>
+        ${user.identityReviewNote ? `<p class="method-note mt-2">Review note: ${escapeHtml(user.identityReviewNote)}</p>` : ""}
+      </div>
+      <form id="identity-resubmit-form">
+        <div class="field"><label for="identity-name">Full name on your ID</label><input id="identity-name" data-identity-name maxlength="120" required></div>
+        <div class="field-row">
+          <div class="field"><label for="identity-type">Document type</label><select id="identity-type" data-identity-type required><option value="">Choose one</option><option value="national_id">National ID</option><option value="drivers_license">Driver's license</option></select></div>
+          <div class="field"><label for="identity-number">ID / license number</label><input id="identity-number" data-identity-number maxlength="40" required></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="identity-front">Front of document</label><input id="identity-front" data-identity-front type="file" accept="image/jpeg,image/png,image/webp" required></div>
+          <div class="field"><label for="identity-back">Back of document</label><input id="identity-back" data-identity-back type="file" accept="image/jpeg,image/png,image/webp" required></div>
+        </div>
+        <label class="checkbox-row mb-2"><input type="checkbox" data-identity-consent> I consent to InkConnect securely storing these ID details and images for manual account verification.</label>
+        <p class="method-note">The images are private and are not shown on your public profile. Do not upload a selfie or another person's ID. This is not an automated authenticity check.</p>
+        <div id="identity-submit-error"></div>
+        <button type="submit" class="btn btn-primary btn-block mt-3">Submit ID for review</button>
+      </form>
+      <p class="text-center mt-3"><a href="#" data-logout style="font-size:.82rem;color:var(--text-2);">Log out</a></p>
+    </div>`;
+  wireLogout(content);
+  document.getElementById("identity-resubmit-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type=submit]");
+    button.disabled = true;
+    button.textContent = "Uploading securely...";
+    try {
+      const identityVerification = await IdentityVerification.collect(form, true);
+      const result = await API.submitIdentityVerification({ identityVerification });
+      if (!result.ok) throw new Error(result.error);
+      const session = Auth.getSession();
+      Auth.setSession(result.user, session.token, true);
+      toast("ID submitted for administrator review.", "success");
+      await render(result.user);
+    } catch (error) {
+      document.getElementById("identity-submit-error").textContent = error.message;
+      button.disabled = false;
+      button.textContent = "Submit ID for review";
+    }
+  });
+}
+
+async function renderIdentityPending(content, user) {
+  const config = await getEffectiveSiteConfig();
+  content.innerHTML = `
+    <div class="glass form-card text-center">
+      <div class="tx-check" style="background:rgba(251,191,36,.15);color:var(--aurora-amber);margin:0 auto 16px;">⏳</div>
+      <span class="eyebrow">Identity verification</span>
+      <h2 class="h-2 mt-1">Documents under review</h2>
+      <p class="body-md mt-2">Your ID images were received. An administrator will review them manually. Dashboard access will unlock after approval${roleNeedsAccessFee(user.role) && user.accessStatus !== "active" ? " and any required access-fee review" : ""}.</p>
+      <p class="muted mt-3" style="font-size:.78rem;">Check again automatically or use the button below.</p>
+      <button class="btn btn-outline btn-block mt-3" id="identity-refresh-btn">Check verification status</button>
+      ${config.COMPANY_SOCIAL_LINK ? `<p class="text-center mt-3"><a href="${escapeHtml(config.COMPANY_SOCIAL_LINK)}" target="_blank" rel="noopener" style="font-size:.85rem;color:var(--aurora-3);font-weight:600;">🔗 While you wait, follow us on all our platforms</a></p>` : ""}
+      <p class="text-center mt-3"><a href="#" data-logout style="font-size:.82rem;color:var(--text-2);">Log out</a></p>
+    </div>`;
+  wireLogout(content);
+  const checkStatus = async (manual) => {
+    const result = await API.getUser({ id: user.id });
+    if (!result.ok) {
+      if (manual) toast(result.error, "error");
+      return;
+    }
+    const session = Auth.getSession();
+    Auth.setSession(result.user, session.token, true);
+    if (result.user.identityStatus !== "pending" || !roleNeedsIdentityVerification(user.role)) {
+      clearInterval(reviewPollTimer);
+      await render(result.user);
+    } else if (manual) {
+      toast("Your ID is still under review.", "info");
+    }
+  };
+  document.getElementById("identity-refresh-btn").addEventListener("click", () => checkStatus(true));
+  reviewPollTimer = setInterval(() => checkStatus(false), 6000);
 }
 
 function wireLogout(container) {
@@ -194,13 +281,15 @@ async function renderPending(content, user) {
     const res = await API.getUser({ id: user.id });
     if (!res.ok) return;
     Auth.setSession(res.user, Auth.getSession().token, true);
-    if (res.user.accessStatus === "active") {
+    if (res.user.accessStatus !== user.accessStatus || res.user.identityStatus !== user.identityStatus) {
       clearInterval(reviewPollTimer);
-      toast("Approved — redirecting to your dashboard!", "success");
-      setTimeout(() => (window.location.href = DASHBOARD_BY_ROLE[res.user.role] || "index.html"), 600);
-    } else if (res.user.accessStatus === "rejected") {
-      clearInterval(reviewPollTimer);
-      render(res.user);
+      if ((res.user.accessStatus === "active" || !roleNeedsAccessFee(res.user.role)) &&
+          (!roleNeedsIdentityVerification(res.user.role) || res.user.identityStatus === "approved")) {
+        toast("Approved — redirecting to your dashboard!", "success");
+        setTimeout(() => (window.location.href = DASHBOARD_BY_ROLE[res.user.role] || "index.html"), 600);
+      } else {
+        render(res.user);
+      }
     } else if (manual) {
       toast("Still pending review — check back soon.", "info");
     }

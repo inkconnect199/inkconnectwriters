@@ -80,6 +80,21 @@
             <div class="field"><label for="password">Password</label><input type="password" id="password" name="password" required><div class="field-error"></div></div>
             <div class="field"><label for="confirmPassword">Confirm Password</label><input type="password" id="confirmPassword" name="confirmPassword" required><div class="field-error"></div></div>
           </div>
+          <div class="glass mb-3" id="identity-verification-section" style="display:none;padding:16px;">
+            <h2 class="h-3">Identity verification</h2>
+            <p class="method-note mt-2">An administrator will manually review your ID. Upload clear images of both sides of a government-issued national ID or driver's license. These documents are private and are not shown on your public profile.</p>
+            <div class="field"><label for="identity-name">Full name on your ID</label><input type="text" id="identity-name" data-identity-name autocomplete="name" maxlength="120"><div class="field-error"></div></div>
+            <div class="field-row">
+              <div class="field"><label for="identity-document-type">Document type</label><select id="identity-document-type" data-identity-type><option value="">Choose one</option><option value="national_id">National ID</option><option value="drivers_license">Driver's license</option></select><div class="field-error"></div></div>
+              <div class="field"><label for="identity-document-number">ID / license number</label><input type="text" id="identity-document-number" data-identity-number maxlength="40" autocomplete="off"><div class="field-error"></div></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="identity-front-file">Front of document</label><input type="file" id="identity-front-file" data-identity-front accept="image/jpeg,image/png,image/webp"><div class="field-error"></div></div>
+              <div class="field"><label for="identity-back-file">Back of document</label><input type="file" id="identity-back-file" data-identity-back accept="image/jpeg,image/png,image/webp"><div class="field-error"></div></div>
+            </div>
+            <label class="checkbox-row mb-2"><input type="checkbox" id="identity-consent" data-identity-consent> I consent to InkConnect securely storing these ID details and images for manual account verification.</label>
+            <p class="method-note">Use only a document you are authorized to provide. Do not upload a selfie or other person's ID. By continuing, you understand that review is manual and is not an automated authenticity check.</p>
+          </div>
           <div class="field">
             <label for="referralCode">Referral code <span class="muted">(optional)</span></label>
             <input type="text" id="referralCode" name="referralCode" placeholder="e.g. amara8213">
@@ -162,6 +177,7 @@
 <script src="assets/js/api.js"></script>
 <script src="assets/js/auth.js"></script>
 <script src="assets/js/app.js"></script>
+<script src="assets/js/identity.js"></script>
 <script src="assets/js/payments.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script src="assets/js/paystack-access.js"></script>

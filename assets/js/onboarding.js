@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", async () => {
+  await getEffectiveSiteConfig();
   let session = Auth.getSession();
   if (!session) {
     window.location.href = "login.html";
@@ -6,6 +7,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   if (session.user.role === "admin") {
     window.location.href = "admin-dashboard.html";
+    return;
+  }
+  if (roleNeedsIdentityVerification(session.user.role) && session.user.identityStatus !== "approved") {
+    window.location.href = "registration-pending.html";
     return;
   }
   if (Auth.needsOnboarding && !Auth.needsOnboarding(session.user)) {
@@ -310,6 +315,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function routeAfterOnboarding(user) {
+  if (roleNeedsIdentityVerification(user.role) && user.identityStatus !== "approved") {
+    window.location.href = "registration-pending.html";
+    return;
+  }
   if (roleNeedsAccessFee(user.role) && user.accessStatus !== "active") {
     window.location.href = "registration-pending.html";
     return;

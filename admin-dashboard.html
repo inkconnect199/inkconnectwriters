@@ -183,9 +183,14 @@
       </div>
 
       <div class="glass panel" style="max-width:520px;">
-        <h3 class="h-3 mb-1">Client access-fee payment details</h3>
-        <p class="muted mb-3" style="font-size:.82rem;">Shown to clients on registration and on the review page while their payment is pending. Changing this here takes effect immediately — no code edits needed.</p>
+        <h3 class="h-3 mb-1">Registration and identity settings</h3>
+        <p class="muted mb-3" style="font-size:.82rem;">Choose whether each account type pays an access fee, and whether new registrations must pass manual identity review.</p>
         <form id="payment-settings-form" novalidate>
+          <label class="checkbox-row mb-2"><input type="checkbox" name="REQUIRE_CLIENT_ACCESS_FEE"> Require clients to pay the access fee</label>
+          <label class="checkbox-row mb-2"><input type="checkbox" name="REQUIRE_WRITER_ACCESS_FEE"> Require writers to pay the access fee</label>
+          <label class="checkbox-row mb-3"><input type="checkbox" name="REQUIRE_IDENTITY_VERIFICATION"> Require identity verification for new accounts</label>
+          <p class="method-note mb-3">ID verification stores document details in the Users sheet and images in a private Google Drive folder. Only authenticated admins can request the images. Review the privacy policy and restrict access to the Sheet and Apps Script owner before enabling.</p>
+          <h4 class="h-3 mb-2" style="font-size:1rem;">Access-fee payment details</h4>
           <div class="field-row">
             <div class="field"><label for="fee-kes">Access fee (KES)</label><input type="number" id="fee-kes" name="ACCESS_FEE_KES" min="0" required></div>
             <div class="field"><label for="fee-usd">Access fee (USD)</label><input type="number" id="fee-usd" name="ACCESS_FEE_USD" min="0" required></div>

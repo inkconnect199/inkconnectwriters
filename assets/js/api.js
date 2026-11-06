@@ -46,6 +46,9 @@ const SITE_CONFIG = {
   REQUIRE_CLIENT_ACCESS_FEE: true,
   // Writers pay the same one-time access fee before their dashboard unlocks too.
   REQUIRE_WRITER_ACCESS_FEE: true,
+  // Identity verification is opt-in. When enabled, users submit both sides
+  // of a government ID for manual review before using the marketplace.
+  REQUIRE_IDENTITY_VERIFICATION: false,
   // Set to false to let clients post jobs directly without admin approval.
   REQUIRE_ADMIN_JOB_APPROVAL: true,
   // Referral program: existing users earn this bonus when someone they
@@ -68,9 +71,15 @@ const COMPANY_PAYMENT_INFO = {
     own toggle in SITE_CONFIG. Used by register.js, dashboard.js and
     registration-pending.js so the rule lives in exactly one place. */
 function roleNeedsAccessFee(role) {
-  if (role === "client") return SITE_CONFIG.REQUIRE_CLIENT_ACCESS_FEE;
-  if (role === "writer") return SITE_CONFIG.REQUIRE_WRITER_ACCESS_FEE;
+  const config = typeof _siteSettingsCache !== "undefined" && _siteSettingsCache ? _siteSettingsCache : SITE_CONFIG;
+  if (role === "client") return config.REQUIRE_CLIENT_ACCESS_FEE;
+  if (role === "writer") return config.REQUIRE_WRITER_ACCESS_FEE;
   return false;
+}
+
+function roleNeedsIdentityVerification(role) {
+  const config = typeof _siteSettingsCache !== "undefined" && _siteSettingsCache ? _siteSettingsCache : SITE_CONFIG;
+  return (role === "client" || role === "writer") && !!config.REQUIRE_IDENTITY_VERIFICATION;
 }
 
 /* ---------------- Local demo database ---------------- */
@@ -181,6 +190,12 @@ async function apiRequest(action, payload = {}) {
     if (!res.ok) return { ok: false, error: "Backend returned HTTP " + res.status + "." };
     return result;
   }
+  if (action === "register" || action === "submitIdentityVerification") {
+    const db = LocalDB.read();
+    if (payload.identityVerification || (action === "register" && db.settings && db.settings.REQUIRE_IDENTITY_VERIFICATION)) {
+      return { ok: false, error: "Identity documents require the deployed Google Apps Script backend so they are not stored in this browser demo." };
+    }
+  }
   return LocalAPI.handle(action, payload);
 }
 
@@ -220,6 +235,7 @@ const LocalAPI = {
       experience: "", languages: [], education: "", certificates: [], availability: "Available",
       portfolio: [], createdAt: Date.now(), verified: true,
       accessStatus: roleNeedsAccessFee(p.role) ? "unpaid" : "active",
+      identityStatus: roleNeedsIdentityVerification(p.role) ? "pending" : "not_required",
       organization: "", preferredBudget: "", onboardingComplete: false, onboardingStep: 1,
       referralCode: generateReferralCode(db, p.username || p.fullName),
       referredBy: referrer ? referrer.id : null,
@@ -243,7 +259,18 @@ const LocalAPI = {
   },
 
   getWriters(db) {
-    return { ok: true, writers: db.allUsers.filter((u) => u.role === "writer").map(sanitize) };
+    const writers = db.allUsers.filter((u) =>
+      u.role === "writer" &&
+      (!roleNeedsAccessFee("writer") || u.accessStatus === "active") &&
+      (!roleNeedsIdentityVerification("writer") || u.identityStatus === "approved")
+    ).map((user) => {
+      const writer = sanitize(user);
+      delete writer.identityStatus;
+      delete writer.identityType;
+      delete writer.identityReviewNote;
+      return writer;
+    });
+    return { ok: true, writers };
   },
 
   getJobs(db, p) {
@@ -580,6 +607,18 @@ const LocalAPI = {
     };
   },
 
+  submitIdentityVerification() {
+    return { ok: false, error: "Identity verification requires the deployed Google Apps Script backend." };
+  },
+
+  adminGetIdentityDocument() {
+    return { ok: false, error: "Identity documents are unavailable in browser demo mode." };
+  },
+
+  adminReviewIdentity() {
+    return { ok: false, error: "Identity verification requires the deployed Google Apps Script backend." };
+  },
+
   adminSetUserStatus(db, p) {
     const u = db.allUsers.find((x) => x.id === p.id);
     if (!u) return { ok: false, error: "User not found." };
@@ -805,6 +844,9 @@ const API = {
   updateTicket: (payload) => apiRequest("updateTicket", payload),
   adminGetUsers: () => apiRequest("adminGetUsers"),
   adminGetUserDetail: (payload) => apiRequest("adminGetUserDetail", payload),
+  submitIdentityVerification: (payload) => apiRequest("submitIdentityVerification", payload),
+  adminGetIdentityDocument: (payload) => apiRequest("adminGetIdentityDocument", payload),
+  adminReviewIdentity: (payload) => apiRequest("adminReviewIdentity", payload),
   adminSetUserStatus: (payload) => apiRequest("adminSetUserStatus", payload),
   adminCreateAdmin: (payload) => apiRequest("adminCreateAdmin", payload),
   adminPromoteToAdmin: (payload) => apiRequest("adminPromoteToAdmin", payload),
