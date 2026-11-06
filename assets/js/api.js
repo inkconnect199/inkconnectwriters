@@ -9,11 +9,23 @@
 
 const API_CONFIG = {
   // Keep this in sync with the deployed Apps Script Web App version.
-  GAS_URL: "https://script.google.com/macros/s/AKfycbwMwJFEPGdtUHgzExE0v18ZMrykzVzPit15R9rraht3fiuMLO5g9-BNleA8tdRKv_ie/exec",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbwUyv78s13460bw-fCVewtnPA-gv6uABzjq9NIALhX4ZS8uw-hs0-dlPmfcoC2FiTF5/exec",
 };
 
 const DB_KEY = "inkconnect_db_v1";
 const SESSION_KEY = "inkconnect_session_v1";
+const LOCAL_DEMO_MODE_KEY = "inkconnect_local_demo_mode";
+
+function isUsingLiveBackend() {
+  return !!API_CONFIG.GAS_URL && !isLocalDemoMode();
+}
+
+function isLocalDemoMode() {
+  const mode = new URLSearchParams(window.location.search).get("localDemo");
+  if (mode === "1") localStorage.setItem(LOCAL_DEMO_MODE_KEY, "true");
+  if (mode === "0") localStorage.removeItem(LOCAL_DEMO_MODE_KEY);
+  return localStorage.getItem(LOCAL_DEMO_MODE_KEY) === "true";
+}
 
 /* ============================================================
    ⚙️  EASY-EDIT SETTINGS
@@ -157,7 +169,7 @@ const LocalDB = {
 
 /* ---------------- Core request dispatcher ---------------- */
 async function apiRequest(action, payload = {}) {
-  if (API_CONFIG.GAS_URL) {
+  if (isUsingLiveBackend()) {
     let res;
     try {
       res = await fetch(API_CONFIG.GAS_URL, {
@@ -802,6 +814,8 @@ function awardReferralBonus(db, referredUser) {
 
 /* ---------------- Public API object used across pages ---------------- */
 const API = {
+  isLocalDemoMode,
+  isUsingLiveBackend,
   healthCheck: () => apiRequest("healthCheck"),
   logout: () => apiRequest("logout"),
   register: (payload) => apiRequest("register", payload),

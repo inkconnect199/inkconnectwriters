@@ -2,7 +2,7 @@ const PaystackAccess = {
   storageKey(userId) { return `inkconnect_paystack_access_${userId}`; },
 
   async start(user) {
-    if (!API_CONFIG.GAS_URL) return { ok: false, error: "Connect the deployed Apps Script backend before using Paystack." };
+    if (!API.isUsingLiveBackend()) return { ok: false, error: "Connect the deployed Apps Script backend before using Paystack." };
     if (typeof PaystackPop !== "function") return { ok: false, error: "Paystack checkout could not load. Check your internet connection and try again." };
 
     const initialized = await API.initializePaystackAccessPayment({ userId: user.id });

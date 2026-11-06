@@ -4,12 +4,8 @@
    method switching, per-method field validation, a realistic
    processing animation, and reference code display.
 
-   When assets/js/api.js has a live GAS_URL configured AND the
-   Apps Script backend has real M-Pesa Daraja / PayPal credentials
-   set (see backend/SETUP.md), these same calls trigger a real
-   STK push / PayPal payout. Without live credentials, the backend
-   (and local demo mode) simulate an instant successful transfer
-   so the flow is always fully testable.
+   The local demo mode simulates deposits in this browser only. Live
+   wallet deposits remain disabled until a provider confirms payment.
    ============================================================ */
 
 const PaymentMethods = {
@@ -92,6 +88,14 @@ const PaymentMethods = {
   },
 
   async simulateProcess(container, method, direction) {
+    if (API.isLocalDemoMode() && direction === "deposit") {
+      container.innerHTML = `<div class="processing-overlay glass"><div class="spinner"></div><div class="processing-title">Simulating ${escapeHtml(this.labels[method])} deposit (local demo only)…</div><div class="processing-sub" data-step2></div></div>`;
+      await new Promise((r) => setTimeout(r, 700));
+      const step2 = container.querySelector("[data-step2]");
+      if (step2) step2.textContent = "No STK push or real payment is being made.";
+      await new Promise((r) => setTimeout(r, 700));
+      return;
+    }
     const steps = {
       mpesa: direction === "deposit"
         ? ["Sending STK push to your phone…", "Waiting for M-Pesa PIN confirmation…"]

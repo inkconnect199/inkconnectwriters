@@ -30,7 +30,7 @@ const Auth = {
   },
 
   async logout() {
-    if (API_CONFIG.GAS_URL) await API.logout();
+    if (API.isUsingLiveBackend()) await API.logout();
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     window.location.href = "index.html";

@@ -11,6 +11,14 @@ let CURRENT_SESSION = null;
 document.addEventListener("DOMContentLoaded", async () => {
   const page = document.body.dataset.page;
   if (!page) return;
+  if (API.isLocalDemoMode()) {
+    const notice = document.createElement("div");
+    notice.className = "container";
+    notice.setAttribute("role", "status");
+    notice.style.cssText = "margin:12px auto;padding:12px 16px;border:1px solid rgba(245,158,11,.5);border-radius:12px;background:rgba(245,158,11,.12);color:var(--text-primary,#fff);font-weight:600;";
+    notice.textContent = "LOCAL DEMO MODE — changes stay in this browser. No real payment or M-Pesa STK push will occur.";
+    document.querySelector(".site-header")?.after(notice);
+  }
 
   const roleMap = { "client-dashboard": "client", "writer-dashboard": "writer", "admin-dashboard": "admin" };
   const role = roleMap[page];
@@ -474,8 +482,11 @@ const ClientDash = {
       const res = await API.deposit({ userId: CURRENT_SESSION.user.id, amount, method, accountRef: data.accountRef, accountName: data.accountName || "", reference });
       submitBtn.disabled = false;
       if (res.ok) {
-        PaymentMethods.showResult(processingEl, true, `Deposited ${money(amount)} via ${PaymentMethods.labels[method]}`, reference);
-        toast(`Deposited ${money(amount)} via ${PaymentMethods.labels[method]}`, "success");
+        const message = API.isLocalDemoMode()
+          ? `Simulated ${money(amount)} ${PaymentMethods.labels[method]} deposit (local demo only; no real payment)`
+          : `Deposited ${money(amount)} via ${PaymentMethods.labels[method]}`;
+        PaymentMethods.showResult(processingEl, true, message, reference);
+        toast(message, "success");
         form.reset();
         this.renderWallet(); this.renderOverview();
       } else {

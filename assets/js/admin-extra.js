@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const registrationRulesChanged =
         updates.REQUIRE_CLIENT_ACCESS_FEE !== !!currentConfig.REQUIRE_CLIENT_ACCESS_FEE ||
         updates.REQUIRE_WRITER_ACCESS_FEE !== !!currentConfig.REQUIRE_WRITER_ACCESS_FEE;
-      if (registrationRulesChanged && API_CONFIG.GAS_URL) {
+      if (registrationRulesChanged && API.isUsingLiveBackend()) {
         const health = await API.healthCheck();
         if (!health.ok) return toast(health.error, "error");
         if (!health.features || health.features.registrationFeeToggles !== true) {

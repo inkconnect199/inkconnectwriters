@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const identitySection = document.getElementById("identity-verification-section");
   const profileFields = document.getElementById("registration-profile-fields");
   const paystackOption = document.querySelector('#reg-payment-methods [data-method="paystack"]');
-  if (!API_CONFIG.GAS_URL && paystackOption) paystackOption.style.display = "none";
+  if (!API.isUsingLiveBackend() && paystackOption) paystackOption.style.display = "none";
   document.querySelector('#reg-payment-methods [data-method="paystack"]')?.addEventListener("click", () => {
     document.querySelector("[data-paystack-note]").style.display = "block";
   });

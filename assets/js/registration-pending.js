@@ -167,7 +167,7 @@ async function renderPaymentForm(content, user) {
       </div>
 
       <form id="review-payment-form" novalidate>
-        ${API_CONFIG.GAS_URL ? `<div class="mb-3">
+        ${API.isUsingLiveBackend() ? `<div class="mb-3">
           <button type="button" class="btn btn-outline btn-block" id="review-paystack-button">Pay securely online with Paystack</button>
           ${PaystackAccess.pendingReference(user.id) ? `<button type="button" class="btn btn-ghost btn-block mt-2" id="review-paystack-check">I paid — check payment status</button>` : ""}
           <p class="method-note mt-2">Paystack will show the payment channels available for your account.</p>

@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Admins have their own dedicated sign-in page — keep the public
       // login form for clients/writers only.
       if (res.user.role === "admin") {
-        if (API_CONFIG.GAS_URL) await API.logout();
+        if (API.isUsingLiveBackend()) await API.logout();
         localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY);
         toast("Admin accounts sign in from the admin login page.", "error");
         return;
@@ -77,20 +77,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     Validate.clearError(emailField);
 
     const submitBtn = e.target.querySelector("button[type=submit]");
-    submitBtn.disabled = true; submitBtn.textContent = API_CONFIG.GAS_URL ? "Sending code..." : "Checking...";
-    const res = API_CONFIG.GAS_URL
+    submitBtn.disabled = true; submitBtn.textContent = API.isUsingLiveBackend() ? "Sending code..." : "Checking...";
+    const res = API.isUsingLiveBackend()
       ? await Auth.requestPasswordReset(email)
       : await Auth.checkEmailExists(email);
     submitBtn.disabled = false; submitBtn.textContent = "Continue";
 
-    if (API_CONFIG.GAS_URL && !res.ok) {
+    if (API.isUsingLiveBackend() && !res.ok) {
       toast(res.error || "Could not send the reset code. Try again later.", "error");
       return;
     }
-    if (!API_CONFIG.GAS_URL && !res.exists) { Validate.showError(emailField, "No account found with that email."); return; }
+    if (!API.isUsingLiveBackend() && !res.exists) { Validate.showError(emailField, "No account found with that email."); return; }
     forgotEmail = email;
     document.getElementById("forgot-email-display").textContent = email;
-    document.getElementById("forgot-reset-token-field").style.display = API_CONFIG.GAS_URL ? "" : "none";
+    document.getElementById("forgot-reset-token-field").style.display = API.isUsingLiveBackend() ? "" : "none";
     document.getElementById("forgot-step-email").style.display = "none";
     document.getElementById("forgot-step-password").style.display = "";
   });
@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!valid) return;
 
     const resetToken = document.getElementById("forgot-reset-token").value.trim();
-    if (API_CONFIG.GAS_URL && !resetToken) {
+    if (API.isUsingLiveBackend() && !resetToken) {
       const field = document.getElementById("forgot-reset-token").closest(".field");
       Validate.showError(field, "Enter the one-time code sent to your email.");
       return;
